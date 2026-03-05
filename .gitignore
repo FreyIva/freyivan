@@ -1,0 +1,19 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+database.db
+media.db
+static/uploads/
+storage/
+
+# macOS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Android / Gradle build artifacts
+master-android/.gradle/
+master-android/**/build/
+master-android/local.properties

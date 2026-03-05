@@ -1,0 +1,45 @@
+{% for group in rows|groupby('responsible') %}
+<section class="amocrm-group-block">
+    <h3>{{ group.grouper }} <span class="card-meta">({{ group.list|length }})</span></h3>
+    <div class="users-table-wrap">
+        <table class="users-table amocrm-leads-table">
+            <thead>
+                <tr>
+                    <th style="width: 60px;">№</th>
+                    <th>Название проекта</th>
+                    <th>Оплата</th>
+                    <th>Итоговая стоимость</th>
+                    <th>Площадь, м²</th>
+                    <th>Пл. застройки</th>
+                    <th>Пл. дома</th>
+                    <th>Допы</th>
+                    <th class="amocrm-comment-cell">Комментарий</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for r in group.list %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td class="{% if r.project_name == 'null' %}td-null{% endif %}">
+                        {% if r.project_name != 'null' %}
+                        <a href="https://sherwoodhome.amocrm.ru/leads/detail/{{ r.lead_id }}" target="_blank" rel="noopener">{{ r.project_name }}</a>
+                        {% else %}
+                        {{ r.project_name }}
+                        {% endif %}
+                    </td>
+                    <td class="{% if r.payment_method == 'null' %}td-null{% endif %}">{{ r.payment_method }}</td>
+                    <td class="{% if r.total_price == 'null' %}td-null{% endif %}">{{ r.total_price }}</td>
+                    <td class="{% if r.area_sqm == 'null' %}td-null{% endif %}">{{ r.area_sqm }}</td>
+                    <td class="{% if r.build_area == 'null' %}td-null{% endif %}">{{ r.build_area }}</td>
+                    <td class="{% if r.house_area == 'null' %}td-null{% endif %}">{{ r.house_area }}</td>
+                    <td class="{% if r.extras == 'null' %}td-null{% endif %}">{{ r.extras }}</td>
+                    <td class="amocrm-comment-cell {% if r.comment == 'null' %}td-null{% endif %}">{{ r.comment|urlize(target='_blank', rel='noopener noreferrer') }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% else %}
+<p class="card-meta">Нет данных</p>
+{% endfor %}

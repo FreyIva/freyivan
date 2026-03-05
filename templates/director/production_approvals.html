@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Подтверждение работ — Директор по производству — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('director_production_dashboard') }}" class="nav-link">Дашборд</a>
+<a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+<a href="{{ url_for('director_production_work_approvals') }}" class="nav-link active">Подтверждение работ</a>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('director_production_dashboard') }}">Директор по производству</a> &rarr; <span>Подтверждение работ</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Подтверждение % выполнения</h1>
+    <p class="subtitle">Подтверждение закрытий работ работников вашего направления.</p>
+</div>
+
+{% if items %}
+<section class="card">
+    <div class="users-table-wrap">
+        <table class="users-table">
+            <thead>
+                <tr>
+                    <th style="width:120px;">Дата</th>
+                    <th>Проект</th>
+                    <th style="width:220px;">Работник</th>
+                    <th style="width:90px;">№</th>
+                    <th>Работа</th>
+                    <th style="width:160px;">% выполнения</th>
+                    <th>Комментарий</th>
+                    <th style="width:220px;">Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for it in items %}
+                <tr>
+                    <td>{{ it.report_date|dmy }}</td>
+                    <td>{{ it.project_name }}</td>
+                    <td>{{ it.worker_name }}</td>
+                    <td><strong>{{ it.work_code or it.work_item_id }}</strong></td>
+                    <td>{{ it.work_name }}</td>
+                    <td>{{ it.percent_label or it.percent }}</td>
+                    <td>{{ it.comment or '—' }}</td>
+                    <td style="text-align:right;">
+                        <div style="display:flex; gap:0.5rem; justify-content:flex-end; flex-wrap:wrap;">
+                            <form method="post">
+                                <input type="hidden" name="item_id" value="{{ it.item_id }}">
+                                <button type="submit" name="action" value="approve" class="btn btn-small btn-primary">Подтвердить</button>
+                            </form>
+                            <form method="post" onsubmit="return confirm('Отклонить выполнение?');">
+                                <input type="hidden" name="item_id" value="{{ it.item_id }}">
+                                <button type="submit" name="action" value="reject" class="btn btn-small btn-danger">Отклонить</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% else %}
+<p class="empty-state">Нет работ, ожидающих подтверждения.</p>
+{% endif %}
+{% endblock %}
+

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Взять проект — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('manager_op_dashboard') }}" class="nav-link">Менеджер ОП</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('manager_op_takeover') }}" class="nav-link active">Взять проект</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('manager_op_dashboard') }}">Менеджер ОП</a> &rarr;
+    <span>Взять проект</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Взять проект</h1>
+    <p class="subtitle">Проекты без активного ответственного более {{ inactive_days }} дней можно запросить на себя. Администратор рассмотрит заявку.</p>
+</div>
+
+{% if available %}
+<section class="card">
+    <h2>Доступные для запроса</h2>
+    <div class="users-table-wrap">
+        <table class="users-table">
+            <thead>
+                <tr><th>Проект</th><th>Тип</th><th>Адрес</th><th>Ответственный</th><th>Последняя активность</th><th>Действие</th></tr>
+            </thead>
+            <tbody>
+                {% for p in available %}
+                <tr>
+                    <td>{{ p.name }}</td>
+                    <td>{{ building_types.get(p.type, p.type) }}</td>
+                    <td>{{ p.address }}</td>
+                    <td>{{ p.responsible_name or '—' }}</td>
+                    <td>{{ p.last_responsible_activity_at[:10] if p.last_responsible_activity_at else 'никогда' }}</td>
+                    <td>
+                        {% if p.my_pending %}
+                        <span class="badge badge-warning">Заявка отправлена</span>
+                        {% else %}
+                        <form method="post" style="display:inline;">
+                            <input type="hidden" name="action" value="request">
+                            <input type="hidden" name="project_id" value="{{ p.id }}">
+                            <button type="submit" class="btn btn-small btn-primary">Запросить</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% else %}
+<p class="subtitle">Нет проектов, доступных для запроса.</p>
+{% endif %}
+
+<section class="card">
+    <h2>Мои заявки</h2>
+    {% if my_requests %}
+    <div class="users-table-wrap">
+        <table class="users-table">
+            <thead>
+                <tr><th>Проект</th><th>Дата</th><th>Статус</th></tr>
+            </thead>
+            <tbody>
+                {% for r in my_requests %}
+                <tr>
+                    <td>{{ r.project_name }}</td>
+                    <td>{{ r.created_at[:16] if r.created_at else '' }}</td>
+                    <td>
+                        {% if r.status == 'pending' %}
+                        <span class="badge badge-warning">На рассмотрении</span>
+                        {% elif r.status == 'approved' %}
+                        <span class="badge badge-admin">Одобрена</span>
+                        {% else %}
+                        <span class="badge" style="background:var(--color-danger);color:#fff">Отклонена</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty-state">Заявок пока нет.</p>
+    {% endif %}
+</section>
+{% endblock %}

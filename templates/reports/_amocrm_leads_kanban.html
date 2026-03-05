@@ -1,0 +1,34 @@
+<div class="amocrm-kanban">
+{% for group in rows|groupby('responsible') %}
+    <section class="amocrm-kanban-col">
+        <header class="amocrm-kanban-col-head">
+            <h3>{{ group.grouper }}</h3>
+            <span>{{ group.list|length }}</span>
+        </header>
+        <div class="amocrm-kanban-col-body">
+            {% for r in group.list %}
+            <article class="amocrm-kanban-card">
+                <div class="amocrm-kanban-title">
+                    {% if r.project_name != 'null' %}
+                    <a href="https://sherwoodhome.amocrm.ru/leads/detail/{{ r.lead_id }}" target="_blank" rel="noopener">{{ r.project_name }}</a>
+                    {% else %}
+                    {{ r.project_name }}
+                    {% endif %}
+                </div>
+                <div class="amocrm-kanban-meta">
+                    <span><strong>Оплата:</strong> {{ r.payment_method }}</span>
+                    <span><strong>Итог:</strong> {{ r.total_price }}</span>
+                    <span><strong>Площадь, м²:</strong> {{ r.area_sqm }}</span>
+                    <span><strong>Застройка:</strong> {{ r.build_area }}</span>
+                    <span><strong>Дом:</strong> {{ r.house_area }}</span>
+                    <span><strong>Допы:</strong> {{ r.extras }}</span>
+                </div>
+                <p class="amocrm-kanban-comment{% if r.comment == 'null' %} td-null{% endif %}">{{ r.comment|urlize(target='_blank', rel='noopener noreferrer') }}</p>
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+{% else %}
+    <p class="card-meta">Нет данных</p>
+{% endfor %}
+</div>

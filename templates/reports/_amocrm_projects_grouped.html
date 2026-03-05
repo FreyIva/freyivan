@@ -1,0 +1,45 @@
+{% for group in rows|groupby('responsible') %}
+<section class="amocrm-group-block">
+    <h3>{{ group.grouper }} <span class="card-meta">({{ group.list|length }})</span></h3>
+    <div class="users-table-wrap">
+        <table class="users-table amocrm-leads-table">
+            <thead>
+                <tr>
+                    <th>№</th>
+                    <th>Название проекта</th>
+                    <th>Имя</th>
+                    <th>ЮЛ договора</th>
+                    <th>Проект</th>
+                    <th>Площадь, м²</th>
+                    <th>Итоговая стоимость</th>
+                    <th>Способ оплаты</th>
+                    <th>Номер договора</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for r in group.list %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>
+                        {% if r.project_name != 'null' %}
+                        <a href="https://sherwoodhome.amocrm.ru/leads/detail/{{ r.lead_id }}" target="_blank" rel="noopener">{{ r.project_name }}</a>
+                        {% else %}
+                        <span class="td-null">{{ r.project_name }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="{% if r.client_name == 'null' %}td-null{% endif %}">{{ r.client_name }}</td>
+                    <td class="{% if r.legal_entity == 'null' %}td-null{% endif %}">{{ r.legal_entity }}</td>
+                    <td class="{% if r.project_type == 'null' %}td-null{% endif %}">{{ r.project_type }}</td>
+                    <td class="{% if r.area_sqm == 'null' %}td-null{% endif %}">{{ r.area_sqm }}</td>
+                    <td class="{% if r.contract_total == 'null' %}td-null{% endif %}">{{ r.contract_total }}</td>
+                    <td class="{% if r.payment_method == 'null' %}td-null{% endif %}">{{ r.payment_method }}</td>
+                    <td class="{% if r.contract_number == 'null' %}td-null{% endif %}">{{ r.contract_number }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% else %}
+<p class="card-meta">Нет данных</p>
+{% endfor %}

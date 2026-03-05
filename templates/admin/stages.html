@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}Этапы — {{ project.name }} — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+{% if session.get('role') == 'manager_op' %}
+<a href="{{ url_for('manager_op_dashboard') }}" class="nav-link">Менеджер ОП</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link active">Проекты</a>
+<a href="{{ url_for('manager_op_takeover') }}" class="nav-link">Взять проект</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+{% else %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link active">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+<details class="nav-dropdown">
+    <summary class="nav-link">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+    </div>
+</details>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    {% if session.get('role') == 'manager_op' %}
+    <a href="{{ url_for('manager_op_dashboard') }}">Менеджер ОП</a> &rarr;
+    {% else %}
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr;
+    {% endif %}
+    <a href="{{ url_for('admin_projects') }}">Проекты</a> &rarr;
+    <span>{{ project.name }}</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Этапы проекта: {{ project.name }}{% if project.get('completed_at') %} <span class="badge badge-completed">Завершён</span>{% endif %}</h1>
+    <p class="subtitle">{{ building_types.get(project.type, project.type) }} — {{ project.address }}{% if project.responsible_manager_name %} · Ответственный ОП: {{ project.responsible_manager_name }}{% endif %}</p>
+    <a href="{{ url_for('admin_project_chat', project_id=project.id) }}" class="btn btn-outline">Чат проекта</a>
+    <a href="{{ url_for('admin_project_edit', project_id=project.id) }}" class="btn btn-outline">Редактировать проект</a>
+    {% if session.get('role') == 'admin' %}
+    {% if project.get('completed_at') %}
+    <form method="post" action="{{ url_for('admin_project_stages', project_id=project.id) }}" style="display:inline;">
+        <input type="hidden" name="action" value="reopen">
+        <button type="submit" class="btn btn-outline">Открыть проект</button>
+    </form>
+    {% else %}
+    <form method="post" action="{{ url_for('admin_project_stages', project_id=project.id) }}" style="display:inline;" onsubmit="return confirm('Отметить проект как завершённый? Он исчезнет с дашборда.');">
+        <input type="hidden" name="action" value="complete">
+        <button type="submit" class="btn btn-outline">Завершить проект</button>
+    </form>
+    {% endif %}
+    {% endif %}
+    <form method="post" action="{{ url_for('admin_project_delete', project_id=project.id) }}" style="display:inline;" onsubmit="return confirm('Удалить проект и все его этапы?');">
+        <button type="submit" class="btn btn-danger">Удалить проект</button>
+    </form>
+</div>
+
+<section class="card project-photo-card">
+    <h3>Фото проекта</h3>
+    {% if project.get('photo_token') %}
+    <img src="{{ url_for('media_file', token=project['photo_token']) }}" alt="{{ project.name }}" class="project-photo-preview">
+    {% elif project.get('photo_path') %}
+    <img src="{{ url_for('static', filename=project['photo_path']) }}" alt="{{ project.name }}" class="project-photo-preview">
+    {% else %}
+    <p class="muted">Фото не добавлено</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('admin_project_stages', project_id=project.id) }}" enctype="multipart/form-data" class="project-photo-form">
+        <input type="hidden" name="action" value="edit_photo">
+        <div class="form-row">
+            <input type="file" name="photo" accept=".jpg,.jpeg,.png" class="form-control" {% if not project.get('photo_path') %}required{% endif %}>
+            <button type="submit" class="btn btn-primary">{{ 'Изменить' if (project.get('photo_token') or project.get('photo_path')) else 'Добавить' }}</button>
+        </div>
+    </form>
+</section>
+
+
+<section class="card">
+    <h2>Добавить этап</h2>
+    <p class="subtitle" style="margin-bottom: 0.75rem;">Даты начала и окончания попадают в производственный календарь</p>
+    <form method="post" action="{{ url_for('admin_project_stages', project_id=project.id) }}" class="form form-inline">
+        <input type="hidden" name="action" value="add">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="stage_name">Название этапа</label>
+                <input type="text" id="stage_name" name="stage_name" required class="form-control" placeholder="Например: Фундамент">
+            </div>
+            <div class="form-group">
+                <label for="stage_planned_start">Начало</label>
+                <input type="date" id="stage_planned_start" name="stage_planned_start" class="form-control" title="Плановая дата начала">
+            </div>
+            <div class="form-group">
+                <label for="stage_planned_end">Окончание</label>
+                <input type="date" id="stage_planned_end" name="stage_planned_end" class="form-control" title="Плановая дата окончания">
+            </div>
+            <button type="submit" class="btn btn-primary">Добавить</button>
+        </div>
+    </form>
+</section>
+
+<section class="card">
+    <h2>Список этапов</h2>
+    {% if stages %}
+    <form method="post" action="{{ url_for('admin_project_stages', project_id=project.id) }}" id="stages-form" style="display:none;">
+        <input type="hidden" name="action" value="save_all">
+    </form>
+    <div class="stages-list">
+        {% for s in stages %}
+        <div class="stage-item-wrapper">
+        <div class="stage-item" data-stage-id="{{ s.id }}">
+            <span class="stage-order">{{ s.order_num }}</span>
+            <div class="stage-actions">
+                <input type="text" name="stage_{{ s.id }}" form="stages-form" value="{{ s.name }}" class="form-control stage-name-edit" placeholder="Название">
+                <input type="date" name="stage_planned_start_{{ s.id }}" form="stages-form" value="{{ s.planned_start_date or '' }}" class="form-control" style="max-width: 130px;" title="Начало">
+                <input type="date" name="stage_planned_end_{{ s.id }}" form="stages-form" value="{{ s.planned_end_date or '' }}" class="form-control" style="max-width: 130px;" title="Окончание">
+            </div>
+            <button type="button" class="btn btn-small btn-danger stage-delete-btn" data-stage-id="{{ s.id }}">Удалить</button>
+        </div>
+        <div class="stage-chat-section stage-chat-inline">
+            <p class="stage-chat-title">Переписка по этапу «{{ s.name }}»:</p>
+            {% if stage_chat.get(s.id) %}
+            {% for m in stage_chat[s.id] %}
+            <div class="stage-chat-message chat-msg-{{ m.msg_type or 'chat' }}">
+                <span class="stage-chat-author">{{ m.author_name }}</span>
+                <span class="stage-chat-time">{{ m.created_at[:16] if m.created_at else '' }}</span>
+                {% if m.msg_type == 'edit_request' %}<span class="chat-msg-label chat-msg-request">Заявка мастера</span>
+                {% elif m.msg_type == 'edit_approval' %}<span class="chat-msg-label chat-msg-approval">Одобрение</span>
+                {% elif m.msg_type == 'edit_reject' %}<span class="chat-msg-label chat-msg-reject">Отмена</span>{% endif %}
+                <div class="stage-chat-body">{{ m.message }}</div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <p class="stage-chat-empty">Пока нет сообщений по этому этапу</p>
+            {% endif %}
+            <form method="post" action="{{ url_for('admin_project_chat', project_id=project.id) }}" class="stage-chat-form">
+                <input type="hidden" name="stage_id" value="{{ s.id }}">
+                <input type="hidden" name="from_page" value="stages">
+                <div class="stage-chat-form-row">
+                    <input type="text" name="message" placeholder="Написать по этапу..." class="form-control" required>
+                    <button type="submit" class="btn btn-small btn-primary">Отправить</button>
+                </div>
+            </form>
+        </div>
+        </div>
+        {% endfor %}
+    </div>
+    <div style="margin-top: 1rem;">
+        <button type="submit" form="stages-form" class="btn btn-primary">Сохранить все изменения</button>
+        <a href="{{ url_for('admin_projects') }}" class="btn btn-outline">Отмена</a>
+    </div>
+    {% else %}
+    <p>Этапов пока нет. Добавьте первый этап выше.</p>
+    {% endif %}
+</section>
+
+<a href="{{ url_for('admin_projects') }}" class="btn btn-outline">← К списку проектов</a>
+
+<form method="post" action="{{ url_for('admin_project_stages', project_id=project.id) }}" id="delete-stage-form" style="display:none;">
+    <input type="hidden" name="action" value="delete">
+    <input type="hidden" name="stage_id" id="delete-stage-id">
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    var form = document.getElementById('delete-stage-form');
+    var input = document.getElementById('delete-stage-id');
+    document.querySelectorAll('.stage-delete-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            if (confirm('Удалить этап?')) {
+                input.value = this.getAttribute('data-stage-id');
+                form.submit();
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}

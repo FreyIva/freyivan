@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Директор по производству — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('director_production_dashboard') }}" class="nav-link active">Дашборд</a>
+<a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+<a href="{{ url_for('director_production_work_approvals') }}" class="nav-link">Подтверждение работ</a>
+<a href="{{ url_for('director_stage_confirmations') }}" class="nav-link">Подтверждение этапов</a>
+<a href="{{ url_for('director_production_calendar') }}" class="nav-link">Производственный календарь</a>
+<a href="{{ url_for('director_production_analytics') }}" class="nav-link">Аналитика цеха</a>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <span>Директор по производству</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Директор по производству</h1>
+    <p class="subtitle">Мастера/работники вашего направления и назначения объектов работникам.</p>
+</div>
+
+<section class="card">
+    <h2>Назначить объект работнику</h2>
+    <form method="post" class="form">
+        <input type="hidden" name="action" value="assign">
+        <div class="form-row">
+            <div class="form-group" style="min-width:260px;">
+                <label for="worker_id">Работник</label>
+                <select id="worker_id" name="worker_id" class="form-control" required>
+                    <option value="">— выбрать —</option>
+                    {% for w in workers %}
+                    <option value="{{ w.id }}">{{ w.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="min-width:260px;">
+                <label for="project_id">Проект</label>
+                <select id="project_id" name="project_id" class="form-control" required>
+                    <option value="">— выбрать —</option>
+                    {% for p in projects %}
+                    <option value="{{ p.id }}">{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="align-self:end;">
+                <button type="submit" class="btn btn-primary">Назначить</button>
+            </div>
+        </div>
+        <p class="card-meta">Работник должен быть привязан к вам как к директору по производству.</p>
+    </form>
+</section>
+
+<section class="card">
+    <h2>Текущие назначения (сделанные вами)</h2>
+    {% if assignments %}
+    <div class="users-table-wrap">
+        <table class="users-table">
+            <thead><tr><th>Работник</th><th>Проект</th><th style="width:180px;">Дата</th><th style="width:140px;"></th></tr></thead>
+            <tbody>
+                {% for a in assignments %}
+                <tr>
+                    <td>{{ a.worker_name }}</td>
+                    <td>{{ a.project_name }} <a href="{{ url_for('director_project_chat', project_id=a.project_id) }}" class="btn btn-small btn-outline" style="margin-left:0.5rem;">Чат</a></td>
+                    <td>{{ a.created_at[:19] if a.created_at else '' }}</td>
+                    <td style="text-align:right;">
+                        <form method="post" onsubmit="return confirm('Снять назначение?');">
+                            <input type="hidden" name="action" value="unassign">
+                            <input type="hidden" name="worker_id" value="{{ a.worker_id }}">
+                            <input type="hidden" name="project_id" value="{{ a.project_id }}">
+                            <button type="submit" class="btn btn-small btn-danger">Снять</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty-state">Пока нет назначений.</p>
+    {% endif %}
+</section>
+
+<section class="card">
+    <h2>Мастера направления</h2>
+    {% if masters %}
+    <ul class="card-list">
+        {% for m in masters %}
+        <li>{{ m.full_name }}</li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty-state">Нет мастеров, привязанных к вам.</p>
+    {% endif %}
+</section>
+{% endblock %}
+

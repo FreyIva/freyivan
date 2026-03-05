@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Прораб — Мои объекты — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('foreman_dashboard') }}" class="nav-link active">Мои объекты</a>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <span>Прораб</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Мои объекты (прораб)</h1>
+    <p class="subtitle">Объекты, которые назначил директор стройки на участке.</p>
+</div>
+
+{% if projects %}
+<section class="card">
+    <div class="users-table-wrap">
+        <table class="admin-projects-table">
+            <thead><tr><th>Объект</th><th>Адрес</th><th style="width:160px;"></th></tr></thead>
+            <tbody>
+                {% for p in projects %}
+                <tr>
+                    <td><strong>{{ p.name }}</strong></td>
+                    <td>{{ p.address }}</td>
+                    <td style="text-align:right;">
+                        <a href="{{ url_for('foreman_project', project_id=p.id) }}" class="btn btn-small btn-primary">Открыть</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% else %}
+<p class="empty-state">Пока нет назначенных объектов.</p>
+{% endif %}
+{% endblock %}
+

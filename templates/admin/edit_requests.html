@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Заявки на редактирование — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+{% if is_director_only %}
+{% if current_role == 'director_production' %}
+<a href="{{ url_for('director_production_dashboard') }}" class="nav-link">Дашборд</a>
+<a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+{% elif current_role == 'director_construction' %}
+<a href="{{ url_for('director_construction_dashboard') }}" class="nav-link">Дашборд</a>
+<a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+{% endif %}
+{% else %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+<details class="nav-dropdown">
+    <summary class="nav-link">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+    </div>
+</details>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    {% if is_director_only %}<span>Заявки на редактирование</span>{% else %}<a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr; <span>Заявки на редактирование</span>{% endif %}
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Заявки на редактирование этапов</h1>
+    <p class="subtitle">{% if current_role == 'director_production' %}Заявки от мастеров.{% elif current_role == 'director_construction' %}Заявки и отчёты от прорабов.{% else %}Мастера и прорабы запрашивают замену фото. Подтвердите или отмените.{% endif %}</p>
+</div>
+
+{% if edit_requests %}
+{% for req in edit_requests %}
+<div class="card edit-request-card">
+    <div class="edit-request-header">
+        <h3>{{ req.project_name }} — {{ req.stage_name }}</h3>
+        <p class="edit-request-meta">{{ 'Прораб' if req.get('creator_role') == 'foreman' else 'Мастер' }}: {{ req.master_name }} | {{ req.created_at[:19] if req.created_at else '' }}</p>
+    </div>
+    {% if req.new_photos and req.new_photos[0].get('comment') %}
+    <div class="master-comment-highlight">
+        <strong>Сообщение мастера:</strong> {{ req.new_photos[0]['comment'] }}
+    </div>
+    {% endif %}
+    <div class="edit-request-comparison">
+        <div class="edit-request-section">
+            <h4>Текущие фото (будут удалены при одобрении)</h4>
+            <div class="photo-carousel-wrap">
+                {% if req.current_photos %}
+                <div class="photo-carousel">
+                    {% for r in req.current_photos %}
+                    {% if r.get('photo_token') %}
+                    <a href="{{ url_for('media_file', token=r['photo_token']) }}" class="photo-carousel-item photo-open-lightbox">
+                        <img src="{{ url_for('media_file', token=r['photo_token']) }}" alt="Текущее">
+                    {% else %}
+                    <a href="{{ url_for('static', filename=r['photo_path']) }}" class="photo-carousel-item photo-open-lightbox">
+                        <img src="{{ url_for('static', filename=r['photo_path']) }}" alt="Текущее">
+                    {% endif %}
+                    </a>
+                    {% endfor %}
+                </div>
+                <p class="photo-carousel-hint">← пролистайте для просмотра всех фото →</p>
+                {% else %}
+                <p class="muted">Нет фото</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="edit-request-section">
+            <h4>Новые фото (заменят текущие)</h4>
+            <div class="photo-carousel-wrap">
+                {% if req.new_photos %}
+                <div class="photo-carousel">
+                    {% for p in req.new_photos %}
+                    {% if p.get('photo_token') %}
+                    <a href="{{ url_for('media_file', token=p['photo_token']) }}" class="photo-carousel-item photo-open-lightbox">
+                        <img src="{{ url_for('media_file', token=p['photo_token']) }}" alt="Новое">
+                    {% else %}
+                    <a href="{{ url_for('static', filename=p['photo_path']) }}" class="photo-carousel-item photo-open-lightbox">
+                        <img src="{{ url_for('static', filename=p['photo_path']) }}" alt="Новое">
+                    {% endif %}
+                    </a>
+                    {% endfor %}
+                </div>
+                <p class="photo-carousel-hint">← пролистайте для просмотра всех фото →</p>
+                {% if req.new_photos and req.new_photos[0].get('comment') %}
+                <p class="edit-request-comment">{{ req.new_photos[0]['comment'] }}</p>
+                {% endif %}
+                {% else %}
+                <p class="muted">Нет фото</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <form method="post" action="{{ url_for('admin_edit_requests') }}" class="edit-request-form">
+        <input type="hidden" name="request_id" value="{{ req.id }}">
+        <div class="edit-request-comment-block">
+            <label for="admin_comment_{{ req.id }}">Комментарий для мастера (необязательно, попадёт в чат проекта):</label>
+            <textarea id="admin_comment_{{ req.id }}" name="admin_comment" rows="3" class="form-control" placeholder="Замечания или пояснения для мастера..."></textarea>
+        </div>
+        <div class="edit-request-actions">
+            <button type="submit" name="action" value="approve" class="btn btn-primary" onclick="return confirm('Одобрить заявку? Старые фото будут удалены.');">Одобрить</button>
+            <button type="submit" name="action" value="reject" class="btn btn-danger" onclick="return confirm('Отменить заявку? Статус этапа останется прежним.');">Отменить</button>
+        </div>
+    </form>
+</div>
+{% endfor %}
+{% else %}
+<p class="empty-state">Нет заявок на рассмотрении.</p>
+{% endif %}
+
+<!-- Lightbox для фото (без перехода на новую вкладку) -->
+<div id="editRequestsLightbox" class="lightbox">
+    <span class="lightbox-close">&times;</span>
+    <img src="" alt="Фото" class="lightbox-img">
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    var lightbox = document.getElementById('editRequestsLightbox');
+    var lightboxImg = lightbox && lightbox.querySelector('.lightbox-img');
+    var links = document.querySelectorAll('.photo-open-lightbox');
+    function closeLb() { if (lightbox) lightbox.classList.remove('active'); }
+    links.forEach(function(a) {
+        a.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (lightboxImg && this.href) {
+                lightboxImg.src = this.href;
+                lightbox.classList.add('active');
+            }
+        });
+    });
+    if (lightbox) {
+        lightbox.querySelector('.lightbox-close').addEventListener('click', closeLb);
+        lightbox.addEventListener('click', function(e) { if (e.target === lightbox) closeLb(); });
+    }
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && lightbox && lightbox.classList.contains('active')) closeLb();
+    });
+})();
+</script>
+{% endblock %}

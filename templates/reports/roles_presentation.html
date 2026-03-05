@@ -1,0 +1,696 @@
+{% extends "base.html" %}
+
+{% block title %}Связи ролей — презентация — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+<a href="{{ url_for('admin_production_report') }}" class="nav-link">Аналитика компании</a>
+<details class="nav-dropdown" open>
+    <summary class="nav-link active">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+        <a href="{{ url_for('amocrm_projects_report') }}" class="nav-link">Проекты Sherwood Home</a>
+        <a href="{{ url_for('amocrm_sources_report') }}" class="nav-link">Источники лидов (недели)</a>
+        <a href="{{ url_for('amocrm_sources_dashboard') }}" class="nav-link">Единый TV дашборд</a>
+        {% if can_impersonate %}
+        <a href="{{ url_for('roles_presentation_report') }}" class="nav-link active">Связи ролей (презентация)</a>
+        {% endif %}
+    </div>
+</details>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr;
+    <span>Связи ролей — презентация</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<style>
+    .roles-presentation-shell {
+        position: relative;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 24px 24px 32px;
+        border-radius: 18px;
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.96), rgba(15,23,42,0.88));
+        box-shadow:
+            0 24px 70px rgba(15, 23, 42, 0.72),
+            0 0 0 1px rgba(148, 163, 184, 0.22);
+        overflow: hidden;
+        color: var(--color-text);
+    }
+    .roles-presentation-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+    }
+    .roles-presentation-title-main {
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+    }
+    .roles-presentation-title-sub {
+        font-size: 14px;
+        color: var(--color-text-soft);
+        margin-top: 4px;
+    }
+    .roles-presentation-tagline {
+        font-size: 13px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: linear-gradient(120deg, rgba(56,189,248,0.15), rgba(58,12,163,0.3));
+        border: 1px solid rgba(56,189,248,0.4);
+        color: var(--color-text-muted);
+        white-space: nowrap;
+    }
+    .roles-presentation-slides {
+        position: relative;
+        min-height: 360px;
+        margin-top: 8px;
+    }
+    .roles-presentation-slide {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        transform: translateY(18px);
+        pointer-events: none;
+        padding-top: 8px;
+    }
+    .roles-presentation-slide.is-active {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+        animation: rolesFadeInUp 620ms ease forwards;
+    }
+    @keyframes rolesFadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(18px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    .roles-presentation-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+        gap: 20px;
+    }
+    .roles-presentation-grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+    }
+    .roles-presentation-panel {
+        border-radius: 14px;
+        padding: 14px 16px;
+        background: radial-gradient(circle at top left, rgba(30,64,175,0.3), rgba(15,23,42,0.4));
+        border: 1px solid rgba(148, 163, 184, 0.35);
+    }
+    .roles-presentation-panel-alt {
+        background: radial-gradient(circle at top left, rgba(20,83,45,0.28), rgba(15,23,42,0.4));
+    }
+    .roles-presentation-panel-warn {
+        background: radial-gradient(circle at top left, rgba(127,29,29,0.35), rgba(15,23,42,0.4));
+        border-color: rgba(248,113,113,0.55);
+    }
+    .roles-presentation-panel h3 {
+        font-size: 16px;
+        margin: 0 0 6px;
+    }
+    .roles-presentation-panel p {
+        margin: 0 0 6px;
+        font-size: 13px;
+        color: var(--color-text-muted);
+    }
+    .roles-presentation-metrics-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 10px;
+    }
+    .roles-presentation-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 9px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.45);
+        font-size: 11px;
+        color: var(--color-text-soft);
+        background: rgba(15,23,42,0.85);
+    }
+    .roles-presentation-chip-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #22c55e, #a3e635);
+        box-shadow: 0 0 0 3px rgba(22,163,74,0.32);
+    }
+    .roles-presentation-chip-dot-warn {
+        background: linear-gradient(135deg, #f97316, #fb7185);
+        box-shadow: 0 0 0 3px rgba(248,113,113,0.35);
+    }
+    .roles-presentation-list {
+        margin: 6px 0 0;
+        padding-left: 18px;
+        font-size: 13px;
+        color: var(--color-text-soft);
+    }
+    .roles-presentation-list li + li {
+        margin-top: 3px;
+    }
+    .roles-presentation-mini-title {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--color-text-soft);
+        margin-bottom: 4px;
+    }
+    .roles-presentation-keyline {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 6px;
+    }
+    .roles-presentation-controls {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 18px;
+    }
+    .roles-presentation-buttons {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .roles-presentation-btn {
+        border-radius: 999px;
+        padding: 7px 14px;
+        font-size: 13px;
+        border: 1px solid rgba(148, 163, 184, 0.55);
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.95), rgba(15,23,42,0.85));
+        color: var(--color-text);
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: background 160ms ease, border-color 160ms ease, transform 120ms ease;
+    }
+    .roles-presentation-btn-primary {
+        border-color: rgba(56,189,248,0.7);
+        background: linear-gradient(135deg, #0ea5e9, #6366f1);
+        color: #0b1220;
+        font-weight: 600;
+    }
+    .roles-presentation-btn:hover {
+        transform: translateY(-1px);
+        border-color: rgba(251,191,36,0.85);
+    }
+    .roles-presentation-btn[disabled] {
+        opacity: 0.4;
+        cursor: default;
+        transform: none;
+    }
+    .roles-presentation-progress {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11px;
+        color: var(--color-text-soft);
+    }
+    .roles-presentation-dots {
+        display: inline-flex;
+        gap: 4px;
+    }
+    .roles-presentation-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.55);
+        background: transparent;
+        padding: 0;
+        cursor: pointer;
+        transition: background 150ms ease, border-color 150ms ease, transform 120ms ease;
+    }
+    .roles-presentation-dot.is-active {
+        background: linear-gradient(135deg, #22c55e, #4ade80);
+        border-color: rgba(22,163,74,0.9);
+        transform: scale(1.1);
+    }
+    .roles-presentation-shortcuts {
+        font-size: 11px;
+        color: var(--color-text-soft);
+    }
+    .roles-presentation-shortcuts kbd {
+        display: inline-block;
+        padding: 1px 5px;
+        border-radius: 4px;
+        border: 1px solid rgba(148, 163, 184, 0.6);
+        background: rgba(15,23,42,0.9);
+        font-size: 10px;
+    }
+    .roles-presentation-timeline {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 8px;
+    }
+    .roles-presentation-timeline-item {
+        border-radius: 12px;
+        padding: 10px 12px;
+        background: radial-gradient(circle at top left, rgba(30,64,175,0.35), rgba(15,23,42,0.65));
+        border: 1px dashed rgba(148, 163, 184, 0.65);
+        font-size: 12px;
+        color: var(--color-text-soft);
+    }
+    .roles-presentation-timeline-item strong {
+        display: block;
+        font-size: 12px;
+        margin-bottom: 3px;
+        color: var(--color-text);
+    }
+    .roles-presentation-timeline-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--color-text-muted);
+        margin-bottom: 4px;
+    }
+    .roles-presentation-roles-list {
+        max-height: 220px;
+        overflow: hidden auto;
+        padding-right: 4px;
+    }
+    .roles-presentation-roles-list-item + .roles-presentation-roles-list-item {
+        margin-top: 6px;
+    }
+    .roles-presentation-roles-list-item {
+        font-size: 13px;
+        color: var(--color-text-soft);
+    }
+    .roles-presentation-roles-list-item strong {
+        color: var(--color-text);
+    }
+    .roles-presentation-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 7px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.6);
+        font-size: 11px;
+        color: var(--color-text-soft);
+        background: rgba(15,23,42,0.9);
+    }
+    .roles-presentation-pill span {
+        opacity: 0.8;
+    }
+    .roles-presentation-kpi-list {
+        margin: 6px 0 0;
+        padding-left: 16px;
+        font-size: 13px;
+    }
+    .roles-presentation-kpi-list li + li {
+        margin-top: 3px;
+    }
+    @media (max-width: 960px) {
+        .roles-presentation-shell {
+            padding: 18px 16px 24px;
+        }
+        .roles-presentation-grid,
+        .roles-presentation-grid-3,
+        .roles-presentation-timeline,
+        .roles-presentation-metrics-row {
+            grid-template-columns: minmax(0, 1fr);
+        }
+        .roles-presentation-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .roles-presentation-tagline {
+            white-space: normal;
+        }
+    }
+</style>
+
+<div class="page-header">
+    <h1>Связи ролей: презентация</h1>
+    <p class="subtitle">Один экран для демонстрации оргструктуры, отчётов и вектора развития проекта</p>
+</div>
+
+<section class="roles-presentation-shell" id="roles-presentation-shell" aria-label="Презентация по ролям">
+    <div class="roles-presentation-header">
+        <div>
+            <div class="roles-presentation-title-main">Sherwood Home · Роли и ответственность</div>
+            <div class="roles-presentation-title-sub">Кто за что отвечает, какие отчёты смотрим сегодня и к каким метрикам идём завтра</div>
+        </div>
+        <div class="roles-presentation-tagline">
+            Связи ролей → Отчёты → KPI → Вектор развития
+        </div>
+    </div>
+
+    <div class="roles-presentation-slides" id="roles-presentation-slides">
+        {# Слайд 1: От лида до завершённого объекта #}
+        <section class="roles-presentation-slide is-active" data-step="1" aria-label="Поток работы от лида до завершения объекта">
+            <div class="roles-presentation-grid">
+                <div>
+                    <div class="roles-presentation-mini-title">Шаг 1</div>
+                    <div class="roles-presentation-keyline">Как роли проходят весь путь проекта</div>
+                    <div class="roles-presentation-panel">
+                        <h3>От «лида» до завершённого дома</h3>
+                        <p>Логика проекта строится вокруг четырёх больших блоков: продажи, подготовка проекта, производство модулей, строительство на участке.</p>
+                        <ul class="roles-presentation-list">
+                            <li><strong>Менеджер ОП</strong> получает лид из amoCRM, создаёт проект, ведёт клиента до договора.</li>
+                            <li><strong>Админ</strong> контролирует корректность данных, лимиты, документы и финальное завершение проекта.</li>
+                            <li><strong>Директор по производству</strong>, мастера и работники отвечают за выпуск модулей в цеху.</li>
+                            <li><strong>Директор строительства на участке</strong> и прорабы отвечают за все виды строительства на участке и монтаж модулей.</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="roles-presentation-panel roles-presentation-panel-alt">
+                    <h3>Ключевые роли в цепочке</h3>
+                    <div class="roles-presentation-metrics-row">
+                        <div>
+                            <div class="roles-presentation-mini-title">Продажи</div>
+                            <ul class="roles-presentation-list">
+                                <li><strong>Супер-админ</strong> → стратегия и доступ ко всем данным.</li>
+                                <li><strong>Менеджер ОП</strong> → лиды, договор, связь с клиентом.</li>
+                                <li><strong>Заказчик</strong> → согласование договора и приёмка результата.</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <div class="roles-presentation-mini-title">Производство</div>
+                            <ul class="roles-presentation-list">
+                                <li><strong>Директор по производству</strong> → выпуск модулей.</li>
+                                <li><strong>Мастер</strong> → планирование и приёмка работ смены.</li>
+                                <li><strong>Работник</strong> → выполнение работ, ежедневные отчёты.</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <div class="roles-presentation-mini-title">Строительство на участке</div>
+                            <ul class="roles-presentation-list">
+                                <li><strong>Директор строительства на участке</strong> → все объекты на участке.</li>
+                                <li><strong>Прораб</strong> → организация работ на объекте.</li>
+                                <li><strong>Отчёты</strong> → ежедневные закрытия по этапам.</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div style="margin-top:8px;">
+                        <span class="roles-presentation-chip">
+                            <span class="roles-presentation-chip-dot"></span>
+                            <span>Все роли связаны единым потоком проекта</span>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        {# Слайд 2: Кто кому подчиняется #}
+        <section class="roles-presentation-slide" data-step="2" aria-label="Иерархия и подчинённость ролей">
+            <div class="roles-presentation-grid">
+                <div>
+                    <div class="roles-presentation-mini-title">Шаг 2</div>
+                    <div class="roles-presentation-keyline">Иерархия: один центр ответственности на каждом уровне</div>
+                    <div class="roles-presentation-panel">
+                        <h3>Карта подчинения</h3>
+                        <p>У каждой роли есть понятный руководитель и зона ответственности — это основа для отчётности и KPI.</p>
+                        <div class="roles-presentation-roles-list" aria-label="Роли и подчинённость">
+                            {% for key, role in roles_hierarchy.items() %}
+                            <div class="roles-presentation-roles-list-item">
+                                <strong>{{ role.label }}</strong>
+                                {% if role.reports_to %}
+                                    → подчиняется <span>{{ role.reports_to }}</span>
+                                {% else %}
+                                    → <span>верхний уровень</span>
+                                {% endif %}
+                                {% if role.get('subordinates') %}
+                                    <span class="roles-presentation-pill"><span>подчинённые:</span> {{ role.subordinates }}</span>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <div class="roles-presentation-panel roles-presentation-panel-alt">
+                    <h3>Логика по направлениям строительства</h3>
+                    <ul class="roles-presentation-list">
+                        <li><strong>Модульные дома</strong> собираются на производстве и монтируются на участке.</li>
+                        <li><strong>Каркасные, газобетонные и пенополистирол-бетонные дома</strong> строятся на участке.</li>
+                        <li><strong>Директор по производству</strong> отвечает за цех модулей, мастеров и работников.</li>
+                        <li><strong>Директор строительства на участке</strong> отвечает за все направления строительства на участке и прорабов.</li>
+                    </ul>
+                    <p style="margin-top:8px;">Эта логика учтена в правах, доступах и во всех отчётах проекта.</p>
+                </div>
+            </div>
+        </section>
+
+        {# Слайд 3: Какие отчёты мы видим сегодня #}
+        <section class="roles-presentation-slide" data-step="3" aria-label="Текущие отчёты и показатели">
+            <div class="roles-presentation-grid-3">
+                <div class="roles-presentation-panel">
+                    <div class="roles-presentation-mini-title">Операционные отчёты</div>
+                    <h3>Работники и прорабы</h3>
+                    <ul class="roles-presentation-kpi-list">
+                        <li><strong>Отчёты работников</strong> — ежедневные закрытия дней по сменам и этапам.</li>
+                        <li><strong>Отчёты прорабов</strong> — контроль строительства на участке и статусов этапов.</li>
+                        <li><strong>Производственный календарь</strong> — план/факт по проектам и этапам.</li>
+                    </ul>
+                </div>
+                <div class="roles-presentation-panel roles-presentation-panel-alt">
+                    <div class="roles-presentation-mini-title">Продажи и маркетинг</div>
+                    <h3>amoCRM-отчёты</h3>
+                    <ul class="roles-presentation-kpi-list">
+                        <li><strong>Потенциальные клиенты</strong> — воронка сделок и контроль статусов.</li>
+                        <li><strong>Проекты Sherwood Home</strong> — связка сделок amoCRM и реальных объектов.</li>
+                        <li><strong>Источники лидов (недели)</strong> — трафик, квал, CPL/CPQL, эффективность.</li>
+                        <li><strong>Единый TV дашборд</strong> — сводка маркетинга и продаж по годам с анимацией.</li>
+                    </ul>
+                </div>
+                <div class="roles-presentation-panel">
+                    <div class="roles-presentation-mini-title">KPI по ролям</div>
+                    <h3>Что уже считаем</h3>
+                    <ul class="roles-presentation-kpi-list">
+                        <li>План/факт по лидам, квалам и маркетинговым бюджетам.</li>
+                        <li>План/факт по сделкам и выручке, средний чек, структура оплат.</li>
+                        <li>Выпуск модулей по категориям: план против факта по годам.</li>
+                        <li>Эффективность менеджеров, мастеров и прорабов через отчёты и календари.</li>
+                    </ul>
+                    <div style="margin-top:8px;">
+                        <span class="roles-presentation-chip">
+                            <span class="roles-presentation-chip-dot"></span>
+                            <span>На одном ТВ-дисплее — вся картина маркетинга и продаж</span>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        {# Слайд 4: Было → Стало → Стремимся #}
+        <section class="roles-presentation-slide" data-step="4" aria-label="Эволюция логики ролей и отчётности">
+            <div class="roles-presentation-mini-title">Шаг 4</div>
+            <div class="roles-presentation-keyline">Что было, что стало и к чему идём</div>
+            <div class="roles-presentation-grid-3">
+                <div class="roles-presentation-panel roles-presentation-panel-warn">
+                    <h3>Было</h3>
+                    <ul class="roles-presentation-list">
+                        <li>Смешение направлений строительства и неочевидная граница «цех / участок».</li>
+                        <li>Недостаточно формализованные связи ролей и подчинённость.</li>
+                        <li>Разрозненные отчёты без единого дашборда по маркетингу и продажам.</li>
+                        <li>Планы по лидам и сделкам не были связаны с конкретными источниками и модулями.</li>
+                    </ul>
+                </div>
+                <div class="roles-presentation-panel">
+                    <h3>Стало</h3>
+                    <ul class="roles-presentation-list">
+                        <li>Чёткое разделение: модульное производство в цеху и строительство на участке.</li>
+                        <li>Прописанные связи ролей, обязанности и иерархия по всем направлениям.</li>
+                        <li>Единый TV дашборд с план/факт по маркетингу, продажам и выпуску модулей.</li>
+                        <li>Годовые планы по источникам, продажам и модулям с фейковыми данными для пилота.</li>
+                    </ul>
+                </div>
+                <div class="roles-presentation-panel roles-presentation-panel-alt">
+                    <h3>Стремимся</h3>
+                    <ul class="roles-presentation-list">
+                        <li>Глубокие KPI по каждой роли (менеджер ОП, мастер, прораб, директора).</li>
+                        <li>PD-модуль и полное соответствие №152-ФЗ и Постановлению №1119.</li>
+                        <li>Прогнозирование загрузки производства и участков на базе исторических данных.</li>
+                        <li>Оценка эффективности по каждому направлению строительства и источнику трафика.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        {# Слайд 5: Прогноз и вектор развития #}
+        <section class="roles-presentation-slide" data-step="5" aria-label="Прогноз и будущее развитие проекта">
+            <div class="roles-presentation-grid">
+                <div class="roles-presentation-panel">
+                    <h3>Прогноз на будущее</h3>
+                    <p>С учётом текущих отчётов и связей ролей проект движется к единой картине эффективности по всем звеньям: от маркетинга до сдачи объекта.</p>
+                    <div class="roles-presentation-timeline">
+                        <div>
+                            <div class="roles-presentation-timeline-label">1–3 месяца</div>
+                            <div class="roles-presentation-timeline-item">
+                                <strong>Доработка KPI по ролям</strong>
+                                <span>Фокус на видимости: кто где проваливается по срокам, бюджету и воронке.</span>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="roles-presentation-timeline-label">3–6 месяцев</div>
+                            <div class="roles-presentation-timeline-item">
+                                <strong>PD-модуль и безопасность</strong>
+                                <span>Централизация работы с персональными данными и контроль доступа по ролям.</span>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="roles-presentation-timeline-label">6–12 месяцев</div>
+                            <div class="roles-presentation-timeline-item">
+                                <strong>Прогноз и оптимизация</strong>
+                                <span>Прогнозные графики по выпуску модулей, срокам строительства и выручке.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="roles-presentation-panel roles-presentation-panel-alt">
+                    <h3>Как использовать этот экран на презентации</h3>
+                    <ul class="roles-presentation-list">
+                        <li>Слайд 1–2 — показать цепочку и иерархию: кто за что отвечает.</li>
+                        <li>Слайд 3 — продемонстрировать, какие отчёты и цифры уже есть «из коробки».</li>
+                        <li>Слайд 4 — сравнить «было / стало» и подчеркнуть уже сделанную работу.</li>
+                        <li>Слайд 5 — зафиксировать вектор развития и будущие эффекты для бизнеса.</li>
+                    </ul>
+                    <p style="margin-top:8px;font-size:12px;color:var(--color-text-soft);">
+                        Страница оптимизирована под показ на отдельной вкладке/мониторе, с плавной анимацией между шагами и управлением с клавиатуры.
+                    </p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <div class="roles-presentation-controls" aria-label="Управление презентацией">
+        <div class="roles-presentation-buttons">
+            <button type="button" class="roles-presentation-btn" id="roles-prev-btn">
+                ← Назад
+            </button>
+            <button type="button" class="roles-presentation-btn roles-presentation-btn-primary" id="roles-next-btn">
+                Далее →
+            </button>
+        </div>
+        <div class="roles-presentation-progress">
+            <div class="roles-presentation-dots" id="roles-dots">
+                <button type="button" class="roles-presentation-dot is-active" data-step="1" aria-label="К первому шагу"></button>
+                <button type="button" class="roles-presentation-dot" data-step="2" aria-label="К второму шагу"></button>
+                <button type="button" class="roles-presentation-dot" data-step="3" aria-label="К третьему шагу"></button>
+                <button type="button" class="roles-presentation-dot" data-step="4" aria-label="К четвёртому шагу"></button>
+                <button type="button" class="roles-presentation-dot" data-step="5" aria-label="К пятому шагу"></button>
+            </div>
+            <div class="roles-presentation-shortcuts">
+                <span>Стрелки клавиатуры <kbd>←</kbd> <kbd>→</kbd> для переключения</span>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+(function () {
+    var shell = document.getElementById('roles-presentation-shell');
+    if (!shell) return;
+
+    var slides = Array.prototype.slice.call(shell.querySelectorAll('.roles-presentation-slide'));
+    if (!slides.length) return;
+
+    var dotsWrap = shell.querySelector('#roles-dots');
+    var dots = dotsWrap ? Array.prototype.slice.call(dotsWrap.querySelectorAll('.roles-presentation-dot')) : [];
+    var btnPrev = shell.querySelector('#roles-prev-btn');
+    var btnNext = shell.querySelector('#roles-next-btn');
+    var current = 0;
+
+    function updateButtons() {
+        if (!btnPrev || !btnNext) return;
+        btnPrev.disabled = current === 0;
+        btnNext.disabled = current === slides.length - 1;
+    }
+
+    function showSlide(idx) {
+        if (idx < 0 || idx >= slides.length) return;
+        slides.forEach(function (slide, i) {
+            if (i === idx) {
+                slide.classList.add('is-active');
+                slide.setAttribute('aria-hidden', 'false');
+            } else {
+                slide.classList.remove('is-active');
+                slide.setAttribute('aria-hidden', 'true');
+            }
+        });
+        if (dots.length) {
+            dots.forEach(function (dot, i) {
+                if (i === idx) {
+                    dot.classList.add('is-active');
+                } else {
+                    dot.classList.remove('is-active');
+                }
+            });
+        }
+        current = idx;
+        updateButtons();
+    }
+
+    if (btnPrev) {
+        btnPrev.addEventListener('click', function () {
+            if (current > 0) showSlide(current - 1);
+        });
+    }
+    if (btnNext) {
+        btnNext.addEventListener('click', function () {
+            if (current < slides.length - 1) showSlide(current + 1);
+        });
+    }
+    if (dotsWrap && dots.length) {
+        dotsWrap.addEventListener('click', function (e) {
+            var target = e.target;
+            if (!target || !target.classList.contains('roles-presentation-dot')) return;
+            var step = parseInt(target.getAttribute('data-step') || '0', 10);
+            if (!step) return;
+            showSlide(step - 1);
+        });
+    }
+
+    document.addEventListener('keydown', function (e) {
+        if (!shell.contains(document.activeElement) && document.activeElement !== document.body) {
+            return;
+        }
+        if (e.key === 'ArrowRight') {
+            if (current < slides.length - 1) {
+                e.preventDefault();
+                showSlide(current + 1);
+            }
+        } else if (e.key === 'ArrowLeft') {
+            if (current > 0) {
+                e.preventDefault();
+                showSlide(current - 1);
+            }
+        }
+    });
+
+    showSlide(0);
+})();
+</script>
+{% endblock %}
+

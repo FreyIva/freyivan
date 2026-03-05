@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}Редактировать {{ user.full_name }} — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<a href="{{ url_for('admin_users') }}" class="nav-link active">Пользователи</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+{% if can_module_reports %}
+<details class="nav-dropdown">
+    <summary class="nav-link">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        {% if can_page_worker_reports %}
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        {% endif %}
+        {% if can_page_foreman_reports %}
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        {% endif %}
+        {% if can_page_amocrm_leads %}
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+        {% endif %}
+    </div>
+</details>
+{% endif %}
+{% include '_nav_spravochniki_dropdown.html' %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr;
+    <a href="{{ url_for('admin_users') }}">Пользователи</a> &rarr;
+    <span>Редактировать {{ user.full_name }}</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Редактировать пользователя</h1>
+</div>
+
+<section class="card">
+    <form method="post" action="{{ url_for('admin_user_edit', user_id=user.id) }}" class="form">
+        <div class="form-group">
+            <label for="username">Логин</label>
+            <input type="text" id="username" name="username" required class="form-control" value="{{ user.username }}">
+        </div>
+        <div class="form-group">
+            <label for="full_name">Имя</label>
+            <input type="text" id="full_name" name="full_name" required class="form-control" value="{{ user.full_name }}">
+        </div>
+        <div class="form-group">
+            <label for="phone">Телефон</label>
+            <input type="text" id="phone" name="phone" class="form-control phone-input" value="{{ user.phone|phone }}" placeholder="+7 (___) ___-__-__" maxlength="18" inputmode="tel">
+        </div>
+        <div class="form-group">
+            <label for="new_password">Новый пароль (оставьте пустым, чтобы не менять)</label>
+            <div class="password-field">
+                <input type="password" id="new_password" name="new_password" class="form-control" autocomplete="new-password" data-password>
+                <button type="button" class="password-toggle" aria-label="Показать пароль" data-toggle-password>Показать</button>
+            </div>
+        </div>
+        {% if is_superadmin and not user.is_superadmin %}
+        <div class="form-group">
+            <label for="role">Роль</label>
+            <select id="role" name="role" class="form-control">
+                {% for role_key, role_label in roles.items() %}
+                <option value="{{ role_key }}" {% if user.role == role_key %}selected{% endif %}>{{ role_label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% else %}
+        <input type="hidden" name="role" value="{{ user.role }}">
+        <p class="card-meta">Роль: {{ roles.get(user.role, user.role) }}</p>
+        {% endif %}
+        {% if user.role == 'worker' and masters is defined %}
+        <div class="form-group">
+            <label for="reports_to_id">Отчитывается перед</label>
+            <select id="reports_to_id" name="reports_to_id" class="form-control">
+                <option value="">— не назначено —</option>
+                {% for m in masters %}
+                <option value="{{ m.id }}" {% if user.get('reports_to_id') == m.id %}selected{% endif %}>{{ m.full_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+        {% if user.role in ['worker', 'master'] and prod_directors is defined %}
+        <div class="form-group">
+            <label for="reports_to_production_id">Директор по производству</label>
+            <select id="reports_to_production_id" name="reports_to_production_id" class="form-control">
+                <option value="">— не назначено —</option>
+                {% for d in prod_directors %}
+                <option value="{{ d.id }}" {% if user.get('reports_to_production_id') == d.id %}selected{% endif %}>{{ d.full_name }}</option>
+                {% endfor %}
+            </select>
+            <p class="card-meta">Для мастера — кто руководитель по производству. Для рабочего — кто видит отчёты направления.</p>
+        </div>
+        {% endif %}
+        {% if user.role == 'foreman' and cons_directors is defined %}
+        <div class="form-group">
+            <label for="reports_to_construction_id">Директор по строительству</label>
+            <select id="reports_to_construction_id" name="reports_to_construction_id" class="form-control">
+                <option value="">— не назначено —</option>
+                {% for d in cons_directors %}
+                <option value="{{ d.id }}" {% if user.get('reports_to_construction_id') == d.id %}selected{% endif %}>{{ d.full_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        <div class="form-group">
+            <label>Доступ к модулям</label>
+            <div class="users-table-wrap">
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 120px;">Доступ</th>
+                            <th>Модуль</th>
+                            <th style="width: 120px;">Ключ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in modules_catalog %}
+                        <tr>
+                            <td>
+                                <input
+                                    type="checkbox"
+                                    name="perm_modules"
+                                    value="{{ m.module_key }}"
+                                    {% if m.module_key in selected_module_keys %}checked{% endif %}
+                                >
+                            </td>
+                            <td>{{ m.label }}</td>
+                            <td><code>{{ m.module_key }}</code></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Доступ к страницам отчетов</label>
+            <div class="users-table-wrap">
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 120px;">Доступ</th>
+                            <th>Страница</th>
+                            <th style="width: 150px;">Модуль</th>
+                            <th style="width: 150px;">Ключ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in pages_catalog %}
+                        <tr>
+                            <td>
+                                <input
+                                    type="checkbox"
+                                    name="perm_pages"
+                                    value="{{ p.page_key }}"
+                                    {% if p.page_key in selected_page_keys %}checked{% endif %}
+                                >
+                            </td>
+                            <td>{{ p.label }}</td>
+                            <td><code>{{ p.module_key }}</code></td>
+                            <td><code>{{ p.page_key }}</code></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="card-meta">Доступ к странице: включенный модуль + включенная страница.</p>
+        </div>
+        <div class="form-row" style="margin-top:1rem;">
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <a href="{{ url_for('admin_users') }}" class="btn btn-outline">Отмена</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

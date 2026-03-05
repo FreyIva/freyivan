@@ -1,0 +1,23 @@
+<section class="card" style="margin-bottom: 0.8rem;">
+    <h3 style="margin-top: 0;">{{ title }}</h3>
+    <div class="users-table-wrap">
+        <table class="users-table">
+            <thead>
+                <tr>
+                    <th>Ответственный</th>
+                    <th>Итоговая стоимость</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in totals|dictsort(false, 'value')|reverse %}
+                <tr>
+                    <td>{{ item[0] }}</td>
+                    <td>{{ "{:,}".format(item[1]).replace(",", " ") }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="2">Нет данных</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>

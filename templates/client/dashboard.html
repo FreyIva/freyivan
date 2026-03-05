@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Мои объекты — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('client_dashboard') }}" class="nav-link active">Мои объекты</a>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('client_dashboard') }}">Заказчик</a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Мои объекты</h1>
+    <p class="subtitle">Ваши проекты строительства</p>
+</div>
+
+{% if projects %}
+<section class="card">
+    <div class="card-header-row">
+        <h2 style="margin: 0;">Мои объекты</h2>
+        <div class="display-toggle-compact" id="projects-display-toggle" role="group" aria-label="Стиль отображения">
+            <button type="button" class="display-btn {% if projects_display == '1' %}active{% endif %}" data-display="1" title="Карточки">1</button>
+            <button type="button" class="display-btn {% if projects_display == '2' %}active{% endif %}" data-display="2" title="Таблица">2</button>
+            <button type="button" class="display-btn {% if projects_display == '3' %}active{% endif %}" data-display="3" title="Ленточки">3</button>
+            <button type="button" class="display-btn {% if projects_display == '4' %}active{% endif %}" data-display="4" title="Сетка">4</button>
+        </div>
+    </div>
+    <div id="projects-display-views" data-active="{{ projects_display }}">
+    <div class="projects-display-view" data-view="1" style="{% if projects_display != '1' %}display:none;{% endif %}">
+    <div class="project-list dashboard-recent-cards">
+        {% for p in projects %}
+        <a href="{{ url_for('client_project', project_id=p.id) }}" class="project-card-mini project-card-with-photo">
+            {% if p.get('photo_token') %}
+            <div class="project-card-photo project-card-photo-mini"><img src="{{ url_for('media_file', token=p['photo_token']) }}" alt="{{ p.name }}"></div>
+            {% elif p.get('photo_path') %}
+            <div class="project-card-photo project-card-photo-mini"><img src="{{ url_for('static', filename=p['photo_path']) }}" alt="{{ p.name }}"></div>
+            {% endif %}
+            <span class="project-name">{{ p.name }}</span>
+            <span class="project-address">{{ p.address }}</span>
+            <span class="project-type">{{ building_types.get(p.type, p.type) }}</span>
+        </a>
+        {% endfor %}
+    </div>
+    </div>
+    <div class="projects-display-view" data-view="2" style="{% if projects_display != '2' %}display:none;{% endif %}">
+    <div class="users-table-wrap">
+        <table class="admin-projects-table">
+            <thead><tr><th>Превью</th><th>Объект</th><th>Тип</th><th>Адрес</th></tr></thead>
+            <tbody>
+                {% for p in projects %}
+                <tr>
+                    <td>
+                        {% if p.get('photo_token') %}
+                            <img src="{{ url_for('media_file', token=p['photo_token']) }}" class="admin-projects-thumb" alt="">
+                        {% elif p.get('photo_path') %}
+                            <img src="{{ url_for('static', filename=p['photo_path']) }}" class="admin-projects-thumb" alt="">
+                        {% else %}
+                            <span class="admin-projects-thumb admin-projects-thumb-placeholder"></span>
+                        {% endif %}
+                    </td>
+                    <td><a href="{{ url_for('client_project', project_id=p.id) }}"><strong>{{ p.name }}</strong></a></td>
+                    <td>{{ building_types.get(p.type, p.type) }}</td>
+                    <td>{{ p.address }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    </div>
+    <div class="projects-display-view" data-view="3" style="{% if projects_display != '3' %}display:none;{% endif %}">
+    <div class="dashboard-recent-rows">
+        {% for p in projects %}
+        <a href="{{ url_for('client_project', project_id=p.id) }}" class="admin-project-row">
+            {% if p.get('photo_token') %}
+            <div class="admin-project-row-thumb"><img src="{{ url_for('media_file', token=p['photo_token']) }}" alt=""></div>
+            {% elif p.get('photo_path') %}
+            <div class="admin-project-row-thumb"><img src="{{ url_for('static', filename=p['photo_path']) }}" alt=""></div>
+            {% else %}<div class="admin-project-row-thumb admin-project-row-thumb-placeholder">Фото</div>{% endif %}
+            <div class="admin-project-row-body">
+                <span class="project-name">{{ p.name }}</span> · <span class="project-type">{{ building_types.get(p.type, p.type) }}</span>
+                <p class="admin-project-row-meta">{{ p.address }}</p>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    </div>
+    <div class="projects-display-view" data-view="4" style="{% if projects_display != '4' %}display:none;{% endif %}">
+    <div class="project-grid">
+        {% for p in projects %}
+        <a href="{{ url_for('client_project', project_id=p.id) }}" class="project-card project-card-link project-card-variant-c project-card-with-photo">
+            {% if p.get('photo_token') %}
+            <div class="project-card-photo"><img src="{{ url_for('media_file', token=p['photo_token']) }}" alt="{{ p.name }}"></div>
+            {% elif p.get('photo_path') %}
+            <div class="project-card-photo"><img src="{{ url_for('static', filename=p['photo_path']) }}" alt="{{ p.name }}"></div>
+            {% else %}<div class="project-card-photo project-card-photo-placeholder"></div>{% endif %}
+            <div class="project-card-overlay">
+                <div class="project-card-header">
+                    <span class="project-name">{{ p.name }}</span>
+                    <span class="project-type">{{ building_types.get(p.type, p.type) }}</span>
+                </div>
+                <p class="project-address">{{ p.address }}</p>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    </div>
+    </div>
+</section>
+{% else %}
+<p class="empty-state">У вас пока нет объектов.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if projects %}
+<script>
+(function() {
+    var toggle = document.getElementById('projects-display-toggle');
+    var views = document.getElementById('projects-display-views');
+    if (!toggle || !views) return;
+    var viewEls = views.querySelectorAll('.projects-display-view');
+    var btns = toggle.querySelectorAll('.display-btn');
+    function switchView(display) {
+        viewEls.forEach(function(el) {
+            el.style.display = el.getAttribute('data-view') === display ? '' : 'none';
+        });
+        btns.forEach(function(btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-display') === display);
+        });
+        views.setAttribute('data-active', display);
+        fetch('{{ url_for("client_dashboard_pref") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+            body: 'projects_display=' + encodeURIComponent(display)
+        }).catch(function() {});
+    }
+    btns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var d = this.getAttribute('data-display');
+            if (d) switchView(d);
+        });
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

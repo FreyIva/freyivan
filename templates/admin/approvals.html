@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Согласование — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+<details class="nav-dropdown">
+    <summary class="nav-link">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+    </div>
+</details>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr;
+    <span>Согласование</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Согласование документов</h1>
+    <p class="subtitle">Менеджер ОП загружает → Админ одобряет → Заказчик подтверждает</p>
+</div>
+
+{% if projects_contract or projects_estimate %}
+<section class="card">
+    {% if projects_contract %}
+    <h2>Договоры, ожидающие одобрения</h2>
+    <table class="data-table">
+        <thead>
+            <tr><th>Проект</th><th>Адрес</th><th>Действие</th></tr>
+        </thead>
+        <tbody>
+            {% for p in projects_contract %}
+            <tr>
+                <td>{{ p.name }}</td>
+                <td>{{ p.address }}</td>
+                <td><a href="{{ url_for('admin_project_edit', project_id=p.id) }}" class="btn btn-small btn-primary">Одобрить</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if projects_estimate %}
+    <h2 style="margin-top: 1.5rem;">Сметы, ожидающие одобрения</h2>
+    <table class="data-table">
+        <thead>
+            <tr><th>Проект</th><th>Адрес</th><th>Действие</th></tr>
+        </thead>
+        <tbody>
+            {% for p in projects_estimate %}
+            <tr>
+                <td>{{ p.name }}</td>
+                <td>{{ p.address }}</td>
+                <td><a href="{{ url_for('admin_project_edit', project_id=p.id) }}" class="btn btn-small btn-primary">Одобрить</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</section>
+{% else %}
+<p class="subtitle">Нет документов, ожидающих одобрения.</p>
+{% endif %}
+{% endblock %}

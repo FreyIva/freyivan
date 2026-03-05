@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Справочник работ — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+{% if current_role == 'director_production' %}
+<a href="{{ url_for('director_production_dashboard') }}" class="nav-link">Дашборд</a>
+<a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+<a href="{{ url_for('director_production_work_approvals') }}" class="nav-link">Подтверждение работ</a>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% else %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+{% include '_nav_spravochniki_dropdown.html' %}
+<details class="nav-dropdown">
+    <summary class="nav-link">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+    </div>
+</details>
+{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr; <span>Справочник работ</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Справочник работ</h1>
+    <p class="subtitle">Два вида: <strong>Производство</strong> — для отчётов работников (модульные проекты); <strong>Участок</strong> — для отчётов прорабов (каркас, газоблок, пенополистирол). Колонки: трудозатраты (ч/ч), стоимость 1 часа, стоимость работы.</p>
+</div>
+
+<section class="card">
+    <h2>Добавить работу</h2>
+    <form method="post" class="form">
+        <input type="hidden" name="action" value="add">
+        <div class="form-row">
+            <div class="form-group" style="flex: 1; min-width: 160px;">
+                <label for="work_item_type">Вид справочника</label>
+                <select id="work_item_type" name="work_item_type" class="form-control">
+                    {% for k, v in work_item_types.items() %}
+                    <option value="{{ k }}">{{ v }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="flex: 2; min-width: 260px;">
+                <label for="name">Наименование</label>
+                <input type="text" id="name" name="name" class="form-control" placeholder="Например: Монтаж плинтусов, 1 комн" required>
+            </div>
+            <div class="form-group" style="flex: 1; min-width: 180px;">
+                <label for="labor_hours">труд. затр. ч/ч</label>
+                <input type="number" id="labor_hours" name="labor_hours" class="form-control" step="0.1" min="0" placeholder="0">
+            </div>
+            <div class="form-group" style="flex: 1; min-width: 180px;">
+                <label for="hour_price">стоимость 1 часа</label>
+                <input type="number" id="hour_price" name="hour_price" class="form-control" step="1" min="0" placeholder="0">
+            </div>
+            <div class="form-group" style="flex: 1; min-width: 180px;">
+                <label for="work_cost">Стоимость работы</label>
+                <input type="number" id="work_cost" name="work_cost" class="form-control" step="1" min="0" placeholder="0">
+            </div>
+            <div class="form-group" style="align-self: end;">
+                <button type="submit" class="btn btn-primary">Добавить</button>
+            </div>
+        </div>
+    </form>
+</section>
+
+<section class="card">
+    <div class="card-header-row">
+        <h2 style="margin: 0;">Список работ</h2>
+        <form method="post" style="display:inline;">
+            <input type="hidden" name="action" value="dedupe_and_renumber">
+            <button type="submit" class="btn btn-outline" onclick="return confirm('Удалить дубли работ и пересобрать нумерацию (№) по алфавиту? Это НЕ затронет историю закрытий, ссылки будут перенесены.');">Убрать дубли и перенумеровать</button>
+        </form>
+        <form method="post" style="display:inline;">
+            <input type="hidden" name="action" value="import_price_list">
+            <button type="submit" class="btn btn-outline" onclick="return confirm('Импортировать прайс-лист и обновить существующие работы по названию?');">Импорт прайса</button>
+        </form>
+        <a href="{{ url_for('worker_reports') }}" class="btn btn-outline">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="btn btn-outline">Отчёты прорабов</a>
+    </div>
+    <p class="card-meta">Примечание: «Стоимость работы» используется как ставка за 100% выполнения в отчётах (умножается на % закрытия).</p>
+    <form method="post" class="form">
+        <input type="hidden" name="action" value="save">
+        <div class="users-table-wrap">
+            <table class="users-table">
+                <thead>
+                    <tr>
+                        <th style="width: 90px;">
+                            <a class="table-sort-link" href="{{ url_for('admin_work_items', sort='id', dir=('desc' if current_sort == 'id' and current_dir == 'asc' else 'asc'), type=filter_type or none) }}">
+                                ID{% if current_sort == 'id' %}<span class="table-sort-ind">{{ '▲' if current_dir == 'asc' else '▼' }}</span>{% endif %}
+                            </a>
+                        </th>
+                        <th style="width: 90px;">
+                            <a class="table-sort-link" href="{{ url_for('admin_work_items', sort='code', dir=('desc' if current_sort == 'code' and current_dir == 'asc' else 'asc'), type=filter_type or none) }}">
+                                №{% if current_sort == 'code' %}<span class="table-sort-ind">{{ '▲' if current_dir == 'asc' else '▼' }}</span>{% endif %}
+                            </a>
+                        </th>
+                        <th style="width: 130px;">Вид</th>
+                        <th>
+                            <a class="table-sort-link" href="{{ url_for('admin_work_items', sort='name', dir=('desc' if current_sort == 'name' and current_dir == 'asc' else 'asc'), type=filter_type or none) }}">
+                                Наименование{% if current_sort == 'name' %}<span class="table-sort-ind">{{ '▲' if current_dir == 'asc' else '▼' }}</span>{% endif %}
+                            </a>
+                        </th>
+                        <th style="width: 140px;">
+                            <a class="table-sort-link" href="{{ url_for('admin_work_items', sort='labor_hours', dir=('desc' if current_sort == 'labor_hours' and current_dir == 'asc' else 'asc'), type=filter_type or none) }}">
+                                труд. затр. ч/ч{% if current_sort == 'labor_hours' %}<span class="table-sort-ind">{{ '▲' if current_dir == 'asc' else '▼' }}</span>{% endif %}
+                            </a>
+                        </th>
+                        <th style="width: 160px;">
+                            <a class="table-sort-link" href="{{ url_for('admin_work_items', sort='hour_price', dir=('desc' if current_sort == 'hour_price' and current_dir == 'asc' else 'asc'), type=filter_type or none) }}">
+                                стоимость 1 часа{% if current_sort == 'hour_price' %}<span class="table-sort-ind">{{ '▲' if current_dir == 'asc' else '▼' }}</span>{% endif %}
+                            </a>
+                        </th>
+                        <th style="width: 160px;">
+                            <a class="table-sort-link" href="{{ url_for('admin_work_items', sort='work_cost', dir=('desc' if current_sort == 'work_cost' and current_dir == 'asc' else 'asc'), type=filter_type or none) }}">
+                                Стоимость работы{% if current_sort == 'work_cost' %}<span class="table-sort-ind">{{ '▲' if current_dir == 'asc' else '▼' }}</span>{% endif %}
+                            </a>
+                        </th>
+                        <th style="width: 120px;">
+                            <a class="table-sort-link" href="{{ url_for('admin_work_items', sort='active', dir=('desc' if current_sort == 'active' and current_dir == 'asc' else 'asc'), type=filter_type or none) }}">
+                                Активна{% if current_sort == 'active' %}<span class="table-sort-ind">{{ '▲' if current_dir == 'asc' else '▼' }}</span>{% endif %}
+                            </a>
+                        </th>
+                        <th style="width: 140px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for it in items %}
+                    <tr>
+                        <td><strong>{{ it.id }}</strong></td>
+                        <td><strong>{{ it.code or it.id }}</strong></td>
+                        <td>
+                            <select class="form-control" name="type_{{ it.id }}">
+                                {% for k, v in work_item_types.items() %}
+                                <option value="{{ k }}" {% if (it.work_item_type or 'production') == k %}selected{% endif %}>{{ v }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <input type="text" class="form-control" name="name_{{ it.id }}" value="{{ it.name }}">
+                        </td>
+                        <td>
+                            <input type="number" step="0.1" min="0" class="form-control" name="labor_{{ it.id }}" value="{{ '%.1f'|format(it.labor_hours or 0) }}">
+                        </td>
+                        <td>
+                            <input type="number" step="1" min="0" class="form-control" name="hour_{{ it.id }}" value="{{ '%.0f'|format(it.hour_price or 0) }}">
+                        </td>
+                        <td>
+                            <input type="number" step="1" min="0" class="form-control" name="cost_{{ it.id }}" value="{{ '%.0f'|format(it.work_cost or it.unit_price or 0) }}">
+                            <input type="hidden" name="price_{{ it.id }}" value="{{ '%.2f'|format(it.unit_price or 0) }}">
+                        </td>
+                        <td>
+                            <label style="display:flex; align-items:center; gap:0.5rem;">
+                                <input type="checkbox" name="active_{{ it.id }}" value="1" {% if it.active %}checked{% endif %}>
+                                <span>{{ 'Да' if it.active else 'Нет' }}</span>
+                            </label>
+                        </td>
+                        <td style="text-align:right;">
+                            <form method="post" style="display:inline;" onsubmit="return confirm('Удалить работу из списка? Если она использовалась в отчётах — она будет скрыта (деактивирована).');">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="work_item_id" value="{{ it.id }}">
+                                <button type="submit" class="btn btn-small btn-danger">Удалить</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="form-row" style="margin-top: 0.75rem;">
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+        </div>
+    </form>
+</section>
+{% endblock %}
+

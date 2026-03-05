@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block title %}Связи ролей — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+<a href="{{ url_for('admin_roles') }}" class="nav-link active">Связи ролей</a>
+<a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+<details class="nav-dropdown">
+    <summary class="nav-link">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+        <a href="{{ url_for('amocrm_projects_report') }}" class="nav-link">Проекты Sherwood Home</a>
+        <a href="{{ url_for('amocrm_sources_report') }}" class="nav-link">Источники лидов (недели)</a>
+        <a href="{{ url_for('amocrm_sources_dashboard') }}" class="nav-link">Единый TV дашборд</a>
+    </div>
+</details>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr; <span>Связи ролей</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Связи ролей</h1>
+    <p class="subtitle">Кто кому подчиняется, как отчитывается и какие модульные доступы к отчётам назначаются по пользователям</p>
+</div>
+
+<section class="card roles-hierarchy-card">
+    <h2>Иерархия и отчётность</h2>
+    <div class="roles-diagram">
+        <div class="roles-row roles-row-top">
+            <div class="role-node role-super">
+                <span class="role-badge badge-superadmin">Супер-админ</span>
+                <p class="role-node-hint">Верхний уровень, доступ к impersonation и стратегическим правилам</p>
+            </div>
+        </div>
+        <div class="roles-connector">↓</div>
+        <div class="roles-row">
+            <div class="role-node role-admin">
+                <span class="role-badge badge-admin">Администратор</span>
+                <p class="role-node-hint">Операционное управление, настройка модульных доступов к отчётам</p>
+            </div>
+        </div>
+        <div class="roles-connector">↓</div>
+        <div class="roles-row roles-row-branch">
+            <div class="role-node">
+                <span class="role-badge badge-manager_op">Менеджер ОП</span>
+                <p class="role-node-hint">Продажи, сделки и документы</p>
+            </div>
+            <div class="role-node">
+                <span class="role-badge badge-director_production">Дир. по производству</span>
+                <p class="role-node-hint">Мастера и работники (цех модульных домов)</p>
+            </div>
+            <div class="role-node">
+                <span class="role-badge badge-director_construction">Дир. строительства на участке</span>
+                <p class="role-node-hint">Прорабы (каркас, газобетон, пенополистирол, монтаж модулей на участке)</p>
+            </div>
+        </div>
+        <div class="roles-connector">↓</div>
+        <div class="roles-row roles-row-branch">
+            <div class="role-node">
+                <span class="role-badge badge-master">Мастер</span>
+                <p class="role-node-hint">← Дир. по производству</p>
+            </div>
+            <div class="role-node">
+                <span class="role-badge badge-foreman">Прораб</span>
+                <p class="role-node-hint">← Дир. строительства на участке</p>
+            </div>
+        </div>
+        <div class="roles-connector">↓</div>
+        <div class="roles-row">
+            <div class="role-node">
+                <span class="role-badge badge-worker">Работник</span>
+                <p class="role-node-hint">Отчитывается мастеру, % работ подтверждает мастер/директор производства</p>
+            </div>
+        </div>
+        <div class="roles-row roles-row-standalone">
+            <div class="role-node">
+                <span class="role-badge badge-client">Заказчик</span>
+                <p class="role-node-hint">Просмотр своих объектов</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="card">
+    <h2>Описание ролей и обязанностей</h2>
+    <div class="roles-detail-list">
+        {% for role_key, role_data in roles_hierarchy.items() %}
+        <div class="roles-detail-item" id="role-{{ role_key }}">
+            <div class="roles-detail-header">
+                <span class="role-badge badge-{{ role_key }}">{{ role_data.label }}</span>
+                {% if role_data.reports_to %}
+                <span class="roles-reports-to">→ подчиняется <strong>{{ role_data.reports_to }}</strong></span>
+                {% if role_data.reports_via %}
+                <span class="roles-reports-via">({{ role_data.reports_via }})</span>
+                {% endif %}
+                {% endif %}
+            </div>
+            {% if role_data.get('subordinates') %}
+            <p class="roles-subordinates"><strong>Подчинённые:</strong> {{ role_data.subordinates }}</p>
+            {% endif %}
+            <ul class="roles-duties">
+                {% for duty in role_data.duties %}
+                <li>{{ duty }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="card scenarios-card">
+    <h2>Сценарии: кто что делает и в каком порядке</h2>
+
+    <div class="scenario-block">
+        <h3>0. Модульные доступы к отчётам (RBAC)</h3>
+        <ol class="scenario-steps">
+            <li><strong>Администратор</strong> открывает карточку пользователя → «Редактировать пользователя»</li>
+            <li>В блоке «Доступ к модулям» включает/выключает модули (`reports`, `amocrm`, `worker_reports`, `foreman_reports`, `tv_dashboard`)</li>
+            <li>В блоке «Доступ к страницам отчётов» включает/выключает конкретные страницы</li>
+            <li>После сохранения: недоступные отчёты скрываются в шапке, прямой переход по URL блокируется</li>
+        </ol>
+    </div>
+
+    <div class="scenario-block">
+        <h3>1. Создание проекта</h3>
+        <ol class="scenario-steps">
+            <li><strong>Менеджер ОП</strong> (или <strong>Админ</strong>) создаёт проект → выбирает заказчика, мастера, тип строения, адрес</li>
+            <li>Менеджер ОП автоматически становится ответственным (responsible_manager_id)</li>
+            <li>Админ при создании может выбрать любого менеджера ОП ответственным</li>
+        </ol>
+    </div>
+
+    <div class="scenario-block">
+        <h3>2. Согласование договора и сметы</h3>
+        <ol class="scenario-steps">
+            <li><strong>Менеджер ОП</strong> загружает договор и смету → уведомление <strong>Админу</strong> (или директору направления по лимиту)</li>
+            <li><strong>Админ</strong> / <strong>Директор</strong> нажимает «Одобрить» → уведомление <strong>Заказчику</strong></li>
+            <li><strong>Заказчик</strong> подтверждает → документ согласован</li>
+            <li><em>Если заказчик отклоняет:</em> указывает комментарий (мин. 10 символов) → уведомление <strong>Менеджеру ОП</strong> → менеджер загружает новую версию → цепочка повторяется с шага 1</li>
+        </ol>
+    </div>
+
+    <div class="scenario-block">
+        <h3>3. Модульный дом: этапы и отчёты</h3>
+        <ol class="scenario-steps">
+            <li><strong>Админ / Менеджер ОП</strong> добавляет этапы с датами начала и окончания</li>
+            <li><strong>Директор по производству</strong> назначает объект мастеру (через «Назначение объектов»)</li>
+            <li><strong>Мастер</strong> назначает объект работникам (worker_project_access)</li>
+            <li><strong>Работник</strong> закрывает день: работы + % + комментарий → <strong>Мастер</strong> или <strong>Директор по производству</strong> подтверждает %</li>
+            <li><strong>Мастер</strong> добавляет отчёт по этапу (фото + комментарий)</li>
+            <li><strong>Мастер</strong> или <strong>Директор по производству</strong> подтверждает этап → этап закрыт</li>
+        </ol>
+    </div>
+
+    <div class="scenario-block">
+        <h3>4. Строительство на участке (каркас / газобетон / пенополистирол / монтаж модулей): этапы и отчёты</h3>
+        <ol class="scenario-steps">
+            <li><strong>Админ</strong> назначает <strong>Директора строительства на участке</strong> проекту (при редактировании проекта)</li>
+            <li><strong>Директор строительства на участке</strong> назначает объект прорабу (foreman_project_access)</li>
+            <li><strong>Прораб</strong> закрывает рабочий день: работы по этапу + % + комментарий</li>
+            <li><strong>Директор строительства на участке</strong> подтверждает этап → этап закрыт</li>
+        </ol>
+    </div>
+
+    <div class="scenario-block">
+        <h3>5. Мастер/прораб хочет заменить фото этапа (заявка на редактирование)</h3>
+        <ol class="scenario-steps">
+            <li><strong>Мастер</strong> или <strong>Прораб</strong> создаёт заявку: «Заявки на редактирование» или кнопка на странице этапа</li>
+            <li><strong>Админ</strong> или <strong>Директор</strong> (по производству для мастера, по строительству для прораба) рассматривает заявку</li>
+            <li>Одобрение → фото заменяется; отклонение → заявка закрыта</li>
+        </ol>
+    </div>
+
+    <div class="scenario-block">
+        <h3>6. Мастер: вопрос по этапу, спорная ситуация</h3>
+        <ol class="scenario-steps">
+            <li><strong>Мастер</strong> заходит в проект → «Чат проекта»</li>
+            <li>Пишет сообщение, при необходимости привязывает к этапу (выбор этапа в форме)</li>
+            <li>В чате видят: <strong>Админ</strong>, <strong>Менеджер ОП</strong>, <strong>Директор по производству</strong> — любой может ответить</li>
+            <li>Директор по производству участвует в спорных вопросах модульных домов</li>
+        </ol>
+    </div>
+
+    <div class="scenario-block">
+        <h3>7. Прораб: вопрос по этапу, спорная ситуация</h3>
+        <ol class="scenario-steps">
+            <li><strong>Прораб</strong> заходит в проект → «Чат проекта»</li>
+            <li>Пишет сообщение, при необходимости привязывает к этапу</li>
+            <li>В чате видят: <strong>Админ</strong>, <strong>Менеджер ОП</strong>, <strong>Директор строительства на участке</strong> — любой может ответить</li>
+        </ol>
+    </div>
+
+    <div class="scenario-block">
+        <h3>8. Взятие проекта (делегирование)</h3>
+        <ol class="scenario-steps">
+            <li>Ответственный ОП неактивен &gt; 7 дней (не редактирует проект, этапы, не загружает документы)</li>
+            <li>Другой <strong>Менеджер ОП</strong> → «Взять проект» → «Запросить»</li>
+            <li><strong>Админ</strong> → «Заявки на проекты» → одобряет или отклоняет</li>
+            <li>При одобрении: проект переходит заявителю, оба получают уведомление</li>
+            <li><em>Апелляция:</em> бывший ответственный в течение <strong>24 часов</strong> может нажать «Оспорить» → заявка на апелляцию с причиной → <strong>Админ</strong> в «Заявки на проекты» (вкладка Апелляции) может отменить передачу или отклонить апелляцию. Решение окончательное.</li>
+        </ol>
+    </div>
+
+    <div class="scenario-block">
+        <h3>9. Завершение проекта</h3>
+        <ol class="scenario-steps">
+            <li><strong>Админ</strong> заходит в этапы проекта → кнопка «Завершить проект»</li>
+            <li>Проект исчезает с дашборда, остаётся в списке проектов с пометкой «Завершён»</li>
+            <li>Кнопка «Открыть проект» — вернуть проект на дашборд</li>
+        </ol>
+    </div>
+
+    <div class="scenario-block">
+        <h3>10. Отчёты amoCRM для отдела продаж</h3>
+        <ol class="scenario-steps">
+            <li><strong>Админ</strong> назначает пользователю модуль и страницы amoCRM-отчётов</li>
+            <li><strong>Менеджер ОП / РОП / Маркетолог</strong> открывают доступные отчёты: «Потенциальные клиенты», «Проекты Sherwood Home», «Источники лидов», TV-дашборд</li>
+            <li>Данные подтягиваются из amoCRM и обновляются автоматически (через кэш синхронизации)</li>
+            <li>Права действуют и в навигации, и при прямом переходе по URL</li>
+        </ol>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,34 @@
+{% for r in rows %}
+<tr>
+    <td>
+        {{ r.week_label }}
+        <input type="hidden" name="week_start" value="{{ r.week_start }}">
+    </td>
+    {% for tag in source_tags %}
+    {% set src = r.sources.get(tag, {'leads': 0, 'qual': 0}) %}
+    <td class="source-value">{{ src.get('leads', 0) }}/{{ src.get('qual', 0) }}</td>
+    {% endfor %}
+    <td class="total-leads-cell"><strong>{{ r.total_leads }}</strong></td>
+    <td>
+        <input
+            class="form-control"
+            type="number"
+            min="0"
+            step="1"
+            name="meetings_{{ r.week_start }}"
+            value="{{ '' if r.meetings_total is none else r.meetings_total }}"
+            placeholder="0"
+        >
+    </td>
+    <td>
+        <textarea
+            class="form-control source-comment-input"
+            rows="2"
+            name="comment_{{ r.week_start }}"
+            placeholder="Комментарий по неделе"
+        >{{ r.comment_text }}</textarea>
+    </td>
+</tr>
+{% else %}
+<tr><td colspan="{{ source_tags|length + 4 }}">Нет данных</td></tr>
+{% endfor %}

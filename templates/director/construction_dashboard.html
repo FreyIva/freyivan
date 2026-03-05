@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Директор по строительству — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('director_construction_dashboard') }}" class="nav-link active">Дашборд</a>
+<a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+<a href="{{ url_for('director_stage_confirmations') }}" class="nav-link">Подтверждение этапов</a>
+<a href="{{ url_for('director_construction_calendar') }}" class="nav-link">Производственный календарь</a>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <span>Директор по строительству</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Директор по строительству</h1>
+    <p class="subtitle">Прорабы вашего направления и назначения объектов прорабам.</p>
+</div>
+
+<section class="card">
+    <h2>Назначить объект прорабу</h2>
+    <form method="post" class="form">
+        <input type="hidden" name="action" value="assign">
+        <div class="form-row">
+            <div class="form-group" style="min-width:260px;">
+                <label for="foreman_id">Прораб</label>
+                <select id="foreman_id" name="foreman_id" class="form-control" required>
+                    <option value="">— выбрать —</option>
+                    {% for w in foremen %}
+                    <option value="{{ w.id }}">{{ w.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="min-width:260px;">
+                <label for="project_id">Проект</label>
+                <select id="project_id" name="project_id" class="form-control" required>
+                    <option value="">— выбрать —</option>
+                    {% for p in projects %}
+                    <option value="{{ p.id }}">{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="align-self:end;">
+                <button type="submit" class="btn btn-primary">Назначить</button>
+            </div>
+        </div>
+        <p class="card-meta">Прораб должен быть привязан к вам как к директору по строительству.</p>
+    </form>
+</section>
+
+<section class="card">
+    <h2>Текущие назначения (сделанные вами)</h2>
+    {% if assignments %}
+    <div class="users-table-wrap">
+        <table class="users-table">
+            <thead><tr><th>Прораб</th><th>Проект</th><th style="width:180px;">Дата</th><th style="width:140px;"></th></tr></thead>
+            <tbody>
+                {% for a in assignments %}
+                <tr>
+                    <td>{{ a.foreman_name }}</td>
+                    <td>{{ a.project_name }} <a href="{{ url_for('director_project_chat', project_id=a.project_id) }}" class="btn btn-small btn-outline" style="margin-left:0.5rem;">Чат</a></td>
+                    <td>{{ a.created_at[:19] if a.created_at else '' }}</td>
+                    <td style="text-align:right;">
+                        <form method="post" onsubmit="return confirm('Снять назначение?');">
+                            <input type="hidden" name="action" value="unassign">
+                            <input type="hidden" name="foreman_id" value="{{ a.foreman_id }}">
+                            <input type="hidden" name="project_id" value="{{ a.project_id }}">
+                            <button type="submit" class="btn btn-small btn-danger">Снять</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty-state">Пока нет назначений.</p>
+    {% endif %}
+</section>
+{% endblock %}
+

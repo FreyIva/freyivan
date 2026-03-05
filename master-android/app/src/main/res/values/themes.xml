@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.StroyControlMaster" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">#2d5a3d</item>
+        <item name="colorPrimaryVariant">#1e3d29</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="android:statusBarColor">#1e3d29</item>
+        <item name="android:navigationBarColor">#2d5a3d</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

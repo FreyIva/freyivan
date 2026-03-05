@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Аналитика компании — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+<a href="{{ url_for('admin_production_report') }}" class="nav-link active">Аналитика компании</a>
+<details class="nav-dropdown">
+    <summary class="nav-link">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+    </div>
+</details>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr;
+    <a href="{{ url_for('admin_production_calendar') }}">Производственный календарь</a> &rarr;
+    <span>Аналитика компании</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header report-page-header">
+    <div>
+        <h1>Аналитика компании</h1>
+        <p class="subtitle">Эффективность направлений, соблюдение сроков, рабочие дни</p>
+    </div>
+    <a href="{{ url_for('admin_production_calendar') }}" class="btn btn-outline">← Календарь</a>
+</div>
+
+<div class="report-dashboard">
+    <section class="report-section report-by-direction">
+        <h2>Сравнение направлений</h2>
+        <div class="report-direction-grid">
+            <div class="report-direction-card">
+                <h3>Модульные дома</h3>
+                <p class="report-direction-desc">Директор по производству</p>
+                <div class="report-kpi-grid">
+                    <div class="report-kpi"><span class="report-kpi-val {% if data.module.pct_ontime >= 80 %}good{% elif data.module.pct_ontime >= 60 %}warn{% else %}bad{% endif %}">{{ data.module.pct_ontime }}%</span><span class="report-kpi-lbl">Соблюдение сроков</span></div>
+                    <div class="report-kpi"><span class="report-kpi-val">{{ data.module.stages_completed }}/{{ data.module.total_stages }}</span><span class="report-kpi-lbl">Этапов</span></div>
+                    <div class="report-kpi"><span class="report-kpi-val good">{{ data.module.stages_early }}</span><span class="report-kpi-lbl">Досрочно</span></div>
+                    <div class="report-kpi"><span class="report-kpi-val bad">{{ data.module.stages_late }}</span><span class="report-kpi-lbl">Просрочка</span></div>
+                    <div class="report-kpi"><span class="report-kpi-val">{{ data.module.planned_working_days }}</span><span class="report-kpi-lbl">План раб.дн.</span></div>
+                    <div class="report-kpi"><span class="report-kpi-val">{{ data.module.actual_working_days }}</span><span class="report-kpi-lbl">Факт раб.дн.</span></div>
+                </div>
+            </div>
+            <div class="report-direction-card">
+                <h3>Строительство</h3>
+                <p class="report-direction-desc">Каркас, газобетон, пенополистирол · Директор по строительству</p>
+                <div class="report-kpi-grid">
+                    <div class="report-kpi"><span class="report-kpi-val {% if data.construction.pct_ontime >= 80 %}good{% elif data.construction.pct_ontime >= 60 %}warn{% else %}bad{% endif %}">{{ data.construction.pct_ontime }}%</span><span class="report-kpi-lbl">Соблюдение сроков</span></div>
+                    <div class="report-kpi"><span class="report-kpi-val">{{ data.construction.stages_completed }}/{{ data.construction.total_stages }}</span><span class="report-kpi-lbl">Этапов</span></div>
+                    <div class="report-kpi"><span class="report-kpi-val good">{{ data.construction.stages_early }}</span><span class="report-kpi-lbl">Досрочно</span></div>
+                    <div class="report-kpi"><span class="report-kpi-val bad">{{ data.construction.stages_late }}</span><span class="report-kpi-lbl">Просрочка</span></div>
+                    <div class="report-kpi"><span class="report-kpi-val">{{ data.construction.planned_working_days }}</span><span class="report-kpi-lbl">План раб.дн.</span></div>
+                    <div class="report-kpi"><span class="report-kpi-val">{{ data.construction.actual_working_days }}</span><span class="report-kpi-lbl">Факт раб.дн.</span></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="report-section report-charts">
+        <h2>Диаграммы</h2>
+        <div class="report-chart-grid">
+            <div class="report-chart-card">
+                <h3>Модульные — распределение</h3>
+                <div class="report-bar-stack">
+                    {% set m = data.module %}
+                    {% set tot = m.stages_completed or 1 %}
+                    <div class="report-bar-row"><span>Вовремя/раньше</span><div class="report-bar-track"><div class="report-bar report-bar-good" style="width:{{ (m.stages_ontime/tot*100)|round(1) }}%"></div></div><span>{{ m.stages_ontime }}</span></div>
+                    <div class="report-bar-row"><span>Просрочка</span><div class="report-bar-track"><div class="report-bar report-bar-bad" style="width:{{ (m.stages_late/tot*100)|round(1) }}%"></div></div><span>{{ m.stages_late }}</span></div>
+                </div>
+            </div>
+            <div class="report-chart-card">
+                <h3>Строительство — распределение</h3>
+                <div class="report-bar-stack">
+                    {% set c = data.construction %}
+                    {% set tot = c.stages_completed or 1 %}
+                    <div class="report-bar-row"><span>Вовремя/раньше</span><div class="report-bar-track"><div class="report-bar report-bar-good" style="width:{{ (c.stages_ontime/tot*100)|round(1) }}%"></div></div><span>{{ c.stages_ontime }}</span></div>
+                    <div class="report-bar-row"><span>Просрочка</span><div class="report-bar-track"><div class="report-bar report-bar-bad" style="width:{{ (c.stages_late/tot*100)|round(1) }}%"></div></div><span>{{ c.stages_late }}</span></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="report-section report-tables">
+        <h2>Эффективность по ответственным</h2>
+        <div class="report-table-grid">
+            <div class="report-table-card">
+                <h3>Модульные (мастера)</h3>
+                {% if data.module.by_person %}
+                <table class="report-table">
+                    <thead><tr><th>Мастер</th><th>Выполнено</th><th>Вовремя</th><th>Просрочка</th><th>%</th></tr></thead>
+                    <tbody>
+                        {% for name, m in data.module.by_person.items() %}
+                        <tr>
+                            <td>{{ name }}</td>
+                            <td>{{ m.completed }}/{{ m.total }}</td>
+                            <td>{{ m.ontime }}</td>
+                            <td>{% if m.late %}<span class="bad">{{ m.late }}</span>{% else %}—{% endif %}</td>
+                            <td>{% if m.completed %}<span class="{% if (m.ontime/m.completed*100)|round(0) >= 80 %}good{% elif (m.ontime/m.completed*100)|round(0) >= 60 %}warn{% else %}bad{% endif %}">{{ (m.ontime/m.completed*100)|round(0) }}%</span>{% else %}—{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="report-empty">Нет данных</p>
+                {% endif %}
+            </div>
+            <div class="report-table-card">
+                <h3>Строительство (прорабы)</h3>
+                {% if data.construction.by_person %}
+                <table class="report-table">
+                    <thead><tr><th>Прораб</th><th>Выполнено</th><th>Вовремя</th><th>Просрочка</th><th>%</th></tr></thead>
+                    <tbody>
+                        {% for name, m in data.construction.by_person.items() %}
+                        <tr>
+                            <td>{{ name }}</td>
+                            <td>{{ m.completed }}/{{ m.total }}</td>
+                            <td>{{ m.ontime }}</td>
+                            <td>{% if m.late %}<span class="bad">{{ m.late }}</span>{% else %}—{% endif %}</td>
+                            <td>{% if m.completed %}<span class="{% if (m.ontime/m.completed*100)|round(0) >= 80 %}good{% elif (m.ontime/m.completed*100)|round(0) >= 60 %}warn{% else %}bad{% endif %}">{{ (m.ontime/m.completed*100)|round(0) }}%</span>{% else %}—{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="report-empty">Нет данных</p>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <section class="report-section report-summary">
+        <h2>Сводка</h2>
+        <div class="report-summary-grid">
+            <div class="report-summary-item"><strong>Всего просрочено:</strong> {{ data.all.total_delay_days }} дн.</div>
+            <div class="report-summary-item"><strong>Всего сэкономлено:</strong> {{ data.all.total_early_days }} дн.</div>
+            <div class="report-summary-item"><strong>Проектов с просрочками:</strong> {{ data.all.projects_with_delays }} из {{ data.all.total_projects }}</div>
+        </div>
+    </section>
+</div>
+{% endblock %}

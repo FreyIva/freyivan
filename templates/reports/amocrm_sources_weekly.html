@@ -1,0 +1,375 @@
+{% extends "base.html" %}
+
+{% block title %}Источники лидов (недели) — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+{% if current_role in ['marketer', 'rop'] %}
+    {% if can_page_amocrm_leads %}
+    <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+    {% endif %}
+    {% if can_page_amocrm_projects %}
+    <a href="{{ url_for('amocrm_projects_report') }}" class="nav-link">Проекты Sherwood Home</a>
+    {% endif %}
+    {% if can_page_amocrm_sources %}
+    <a href="{{ url_for('amocrm_sources_report') }}" class="nav-link active">Источники лидов (недели)</a>
+    {% endif %}
+{% else %}
+    <a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+    {% if can_impersonate %}
+    <a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+    {% endif %}
+    <a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+    <a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+    <a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+    <a href="{{ url_for('admin_production_report') }}" class="nav-link">Аналитика компании</a>
+    {% if can_module_reports %}
+    <details class="nav-dropdown" open>
+        <summary class="nav-link active">Отчёты</summary>
+        <div class="nav-dropdown-menu">
+            {% if can_page_worker_reports %}
+            <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+            {% endif %}
+            {% if can_page_foreman_reports %}
+            <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+            {% endif %}
+            {% if can_page_amocrm_leads %}
+            <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+            {% endif %}
+            {% if can_page_amocrm_projects %}
+            <a href="{{ url_for('amocrm_projects_report') }}" class="nav-link">Проекты Sherwood Home</a>
+            {% endif %}
+            {% if can_page_amocrm_sources %}
+            <a href="{{ url_for('amocrm_sources_report') }}" class="nav-link active">Источники лидов (недели)</a>
+            {% endif %}
+            {% if can_page_amocrm_tv %}
+            <a href="{{ url_for('amocrm_sources_dashboard') }}" class="nav-link">Единый TV дашборд</a>
+            {% endif %}
+        </div>
+    </details>
+    {% endif %}
+    {% include '_nav_spravochniki_dropdown.html' %}
+{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <span>/{{ current_role_slug or 'admin' }}/amocrm/sources</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Источники лидов по неделям</h1>
+    <div class="display-toggle-compact" id="amocrm-sources-view-toggle" role="group" aria-label="Вид отчёта">
+        <button type="button" class="display-btn active" data-view="weekly">Недельный</button>
+        <button type="button" class="display-btn" data-view="monthly">Месячный KPI</button>
+        <button type="button" class="display-btn" data-view="yearly">Годовой план</button>
+    </div>
+</div>
+
+{% if error %}
+<section class="card">
+    <div class="flash flash-error">{{ error }}</div>
+    <p class="card-meta">Проверьте подключение amoCRM и повторите синхронизацию.</p>
+</section>
+{% else %}
+<section class="card">
+    <div class="amocrm-filter-actions" style="margin-bottom: 0.8rem;">
+        <button type="button" class="btn btn-outline" id="sync-now-btn">Синхронизировать сейчас</button>
+        <button type="button" class="btn btn-outline" id="auto-sync-toggle-btn">Автообновление: ВКЛ</button>
+        <a class="btn btn-outline" href="{{ url_for('amocrm_sources_dashboard') }}" target="_blank" rel="noopener">Открыть ТВ-дашборд</a>
+        <a class="btn btn-outline" href="{{ url_for('amocrm_sources_report', format='csv') }}">Экспорт CSV</a>
+        <a class="btn btn-outline" href="{{ url_for('amocrm_sources_report', format='xlsx') }}">Экспорт XLSX</a>
+    </div>
+
+    <form method="post" id="amocrm-sources-form">
+        <input type="hidden" name="plan_year" value="{{ selected_year }}">
+        <div class="amocrm-report-view is-active" data-view="weekly">
+        <div class="users-table-wrap">
+            <table class="users-table amocrm-sources-weekly-table">
+                <colgroup>
+                    <col class="col-week">
+                    {% for _ in source_tags %}
+                    <col class="col-source">
+                    {% endfor %}
+                    <col class="col-total">
+                    <col class="col-meetings">
+                    <col class="col-comment">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th rowspan="2">Неделя</th>
+                        <th colspan="{{ source_tags|length }}" class="source-group">Источник</th>
+                        <th rowspan="2">Всего лидов</th>
+                        <th rowspan="2">Всего встреч</th>
+                        <th rowspan="2">Комментарии</th>
+                    </tr>
+                    <tr>
+                        {% for tag in source_tags %}
+                        <th class="source-tag-head"><span class="source-tag-rot">{{ tag }}</span></th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody id="amocrm-sources-body">{% include "reports/_amocrm_sources_weekly_rows.html" %}</tbody>
+            </table>
+        </div>
+        </div>
+
+        <div class="amocrm-report-view" data-view="monthly">
+            <div class="users-table-wrap">
+                <table class="users-table amocrm-sources-monthly-table">
+                    <thead>
+                        <tr>
+                            <th>Месяц</th>
+                            <th>Источник</th>
+                            <th>План бюджет</th>
+                            <th>Факт бюджет</th>
+                            <th>План лидов</th>
+                            <th>План квалов</th>
+                            <th>Факт лидов</th>
+                            <th>Факт квалов</th>
+                            <th>% квалов факт</th>
+                            <th>План CPL</th>
+                            <th>Факт CPL</th>
+                            <th>% к плану CPL</th>
+                            <th>План CPQL</th>
+                            <th>Факт CPQL</th>
+                            <th>% к плану CPQL</th>
+                            <th>% плана лидов</th>
+                            <th>% плана квалов</th>
+                            <th>Эффективность</th>
+                        </tr>
+                    </thead>
+                    <tbody id="amocrm-sources-monthly-body">{% with rows=monthly_rows %}{% include "reports/_amocrm_sources_monthly_rows.html" %}{% endwith %}</tbody>
+                </table>
+            </div>
+
+            <div class="users-table-wrap" style="margin-top: 0.8rem;">
+                <table class="users-table amocrm-sources-monthly-table">
+                    <thead>
+                        <tr>
+                            <th>Год</th>
+                            <th>Категория выпуска</th>
+                            <th>План, м²</th>
+                            <th>Факт, м²</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in module_plan_rows %}
+                        <tr>
+                            <td>{{ r.year }}</td>
+                            <td>{{ r.category_label }}</td>
+                            <td>
+                                <input type="hidden" name="modules_plan_row_key" value="{{ r.row_key }}">
+                                <input type="hidden" name="modules_plan_year_{{ r.row_key }}" value="{{ r.year }}">
+                                <input type="hidden" name="modules_plan_cat_{{ r.row_key }}" value="{{ r.category_key }}">
+                                <input type="text" name="modules_plan_units_{{ r.row_key }}" value="{{ '' if r.plan_units is none else r.plan_units }}" class="form-control" inputmode="decimal">
+                            </td>
+                            <td>{{ "{:,.2f}".format(r.fact_units|float).replace(",", " ").replace(".", ",") }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="amocrm-report-view" data-view="yearly">
+            <div class="amocrm-filter-actions" style="margin-bottom: 0.8rem;">
+                <label for="plan-year-select"><strong>Год плана:</strong></label>
+                <select id="plan-year-select" class="form-control" style="max-width: 140px;">
+                    {% for y in year_options %}
+                    <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+                <a class="btn btn-outline" id="plan-year-open-btn" href="{{ url_for('amocrm_sources_report', year=selected_year) }}">Открыть год</a>
+            </div>
+
+            <div class="users-table-wrap" style="margin-bottom: 0.8rem;">
+                <table class="users-table amocrm-sources-monthly-table">
+                    <thead>
+                        <tr>
+                            <th>Месяц</th>
+                            <th>Источник</th>
+                            <th>План бюджет</th>
+                            <th>План лидов</th>
+                            <th>План квалов</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in yearly_source_rows %}
+                        <tr>
+                            <td>{{ r.month_label }}</td>
+                            <td>{{ r.source_name }}</td>
+                            <td>
+                                <input type="hidden" name="yearly_plan_row_key" value="{{ r.row_key }}">
+                                <input type="hidden" name="yearly_month_start_{{ r.row_key }}" value="{{ r.month_start }}">
+                                <input type="hidden" name="yearly_source_name_{{ r.row_key }}" value="{{ r.source_name }}">
+                                <input type="text" name="yearly_plan_budget_{{ r.row_key }}" value="{{ '' if r.plan_budget is none else r.plan_budget }}" class="form-control" inputmode="decimal">
+                            </td>
+                            <td><input type="text" name="yearly_plan_leads_{{ r.row_key }}" value="{{ '' if r.plan_leads is none else r.plan_leads }}" class="form-control" inputmode="numeric"></td>
+                            <td><input type="text" name="yearly_plan_qual_leads_{{ r.row_key }}" value="{{ '' if r.plan_qual_leads is none else r.plan_qual_leads }}" class="form-control" inputmode="numeric"></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="users-table-wrap">
+                <table class="users-table amocrm-sources-monthly-table">
+                    <thead>
+                        <tr>
+                            <th>Месяц</th>
+                            <th>План сделок</th>
+                            <th>Факт сделок</th>
+                            <th>План сумма</th>
+                            <th>Факт сумма</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in yearly_sales_rows %}
+                        <tr>
+                            <td>{{ r.month_label }}</td>
+                            <td>
+                                <input type="hidden" name="sales_plan_month_start" value="{{ r.month_start }}">
+                                <input type="text" name="sales_plan_deals_{{ r.month_start }}" value="{{ '' if r.plan_deals is none else r.plan_deals }}" class="form-control" inputmode="numeric">
+                            </td>
+                            <td>{{ r.fact_deals }}</td>
+                            <td><input type="text" name="sales_plan_amount_{{ r.month_start }}" value="{{ '' if r.plan_amount is none else r.plan_amount }}" class="form-control" inputmode="decimal"></td>
+                            <td>{{ "{:,.0f}".format(r.fact_amount|float).replace(",", " ") }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="amocrm-filter-actions" style="margin-top: 0.8rem;">
+            <button type="submit" class="btn btn-primary">Сохранить недельные/месячные/годовые данные</button>
+        </div>
+    </form>
+
+    <p class="card-meta" id="amocrm-updated-at">Обновлено: {{ cache_updated_at or now.strftime('%d.%m.%Y %H:%M:%S') }}</p>
+    <p class="card-meta" id="sync-status"></p>
+    <p class="card-meta">Неделя считается с 00:00 вторника до 23:59 понедельника.</p>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    var syncUrl = "{{ url_for('amocrm_sources_sync') }}";
+    var dataUrl = "{{ url_for('amocrm_sources_data') }}";
+    var tableBody = document.getElementById('amocrm-sources-body');
+    var monthlyBody = document.getElementById('amocrm-sources-monthly-body');
+    var updatedAtEl = document.getElementById('amocrm-updated-at');
+    var statusEl = document.getElementById('sync-status');
+    var syncBtn = document.getElementById('sync-now-btn');
+    var autoSyncBtn = document.getElementById('auto-sync-toggle-btn');
+    var formEl = document.getElementById('amocrm-sources-form');
+    var autoSyncEnabled = true;
+    var syncInProgress = false;
+    var statusTimer = null;
+    var viewButtons = Array.prototype.slice.call(document.querySelectorAll('#amocrm-sources-view-toggle .display-btn'));
+    var reportViews = Array.prototype.slice.call(document.querySelectorAll('.amocrm-report-view'));
+
+    function setView(viewName) {
+        reportViews.forEach(function (v) {
+            v.classList.toggle('is-active', v.getAttribute('data-view') === viewName);
+        });
+        viewButtons.forEach(function (b) {
+            b.classList.toggle('active', b.getAttribute('data-view') === viewName);
+        });
+        try { localStorage.setItem('amocrm_sources_view', viewName); } catch (e) {}
+    }
+
+    function setStatus(text, autoClear) {
+        if (!statusEl) return;
+        statusEl.textContent = text || "";
+        if (!autoClear) return;
+        if (statusTimer) clearTimeout(statusTimer);
+        statusTimer = setTimeout(function () {
+            statusEl.textContent = "";
+            statusTimer = null;
+        }, 2500);
+    }
+
+    function hasActiveEditorFocus() {
+        var el = document.activeElement;
+        if (!el) return false;
+        if (!formEl || !formEl.contains(el)) return false;
+        var tag = (el.tagName || "").toLowerCase();
+        return tag === "input" || tag === "textarea";
+    }
+
+    function refreshTableFromCache() {
+        if (hasActiveEditorFocus()) return Promise.resolve();
+        return fetch(dataUrl, { method: "GET", headers: { "X-Requested-With": "XMLHttpRequest" } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !data.ok) throw new Error((data && data.error) || "data error");
+                if (tableBody) tableBody.innerHTML = data.rows_html || "";
+                if (monthlyBody) monthlyBody.innerHTML = data.monthly_html || "";
+                if (updatedAtEl) updatedAtEl.textContent = "Обновлено: " + (data.cache_updated_at || "—");
+            });
+    }
+
+    function doSyncAndRefresh() {
+        if (syncInProgress) return;
+        syncInProgress = true;
+        setStatus("Синхронизация с amoCRM...");
+        fetch(syncUrl, { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !data.ok) throw new Error((data && data.error) || "sync error");
+                return refreshTableFromCache();
+            })
+            .then(function () {
+                setStatus("Синхронизировано.", true);
+            })
+            .catch(function () {
+                setStatus("Ошибка синхронизации.", true);
+            })
+            .finally(function () {
+                syncInProgress = false;
+            });
+    }
+
+    if (syncBtn) syncBtn.addEventListener("click", doSyncAndRefresh);
+    if (autoSyncBtn) {
+        autoSyncBtn.addEventListener("click", function () {
+            autoSyncEnabled = !autoSyncEnabled;
+            autoSyncBtn.textContent = autoSyncEnabled ? "Автообновление: ВКЛ" : "Автообновление: ВЫКЛ";
+            setStatus(autoSyncEnabled ? "Автообновление включено." : "Автообновление выключено.", true);
+        });
+    }
+
+    if (viewButtons.length) {
+        viewButtons.forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                setView(btn.getAttribute('data-view'));
+            });
+        });
+        var savedView = null;
+        try { savedView = localStorage.getItem('amocrm_sources_view'); } catch (e) {}
+        setView(savedView || 'weekly');
+    }
+
+    var planYearSelect = document.getElementById('plan-year-select');
+    var planYearOpenBtn = document.getElementById('plan-year-open-btn');
+    if (planYearSelect && planYearOpenBtn) {
+        planYearSelect.addEventListener('change', function () {
+            var y = (planYearSelect.value || '').trim();
+            var base = "{{ url_for('amocrm_sources_report') }}";
+            planYearOpenBtn.href = y ? (base + "?year=" + encodeURIComponent(y)) : base;
+        });
+    }
+
+    setInterval(function () {
+        if (!autoSyncEnabled) return;
+        if (document.visibilityState && document.visibilityState !== "visible") return;
+        doSyncAndRefresh();
+    }, 60000);
+})();
+</script>
+{% endblock %}

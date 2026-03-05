@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Отчёты прорабов — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+{% if current_role == 'admin' %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+{% if can_module_reports %}
+<details class="nav-dropdown" open>
+    <summary class="nav-link active">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        {% if can_page_worker_reports %}
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        {% endif %}
+        {% if can_page_foreman_reports %}
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link active">Отчёты прорабов</a>
+        {% endif %}
+        {% if can_page_amocrm_leads %}
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+        {% endif %}
+    </div>
+</details>
+{% endif %}
+{% include '_nav_spravochniki_dropdown.html' %}
+{% else %}
+<a href="{{ url_for('director_construction_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_page_foreman_reports %}
+<a href="{{ url_for('foreman_reports') }}" class="nav-link active">Отчёты прорабов</a>
+{% endif %}
+<a href="{{ url_for('director_construction_calendar') }}" class="nav-link">Производственный календарь</a>
+{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    {% if current_role == 'admin' %}
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr; <span>Отчёты прорабов</span>
+    {% else %}
+    <a href="{{ url_for('director_construction_dashboard') }}">Директор по строительству</a> &rarr; <span>Отчёты прорабов</span>
+    {% endif %}
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Отчёты прорабов</h1>
+    <p class="subtitle">Закрытия дней по объектам, назначенным прорабам директором по строительству.</p>
+</div>
+
+<section class="card">
+    <h2>Фильтры</h2>
+    <form method="get" class="form">
+        <div class="form-row">
+            <div class="form-group" style="max-width: 220px;">
+                <label for="date_from">С</label>
+                <input type="date" id="date_from" name="date_from" class="form-control" value="{{ date_from }}" required>
+            </div>
+            <div class="form-group" style="max-width: 220px;">
+                <label for="date_to">По</label>
+                <input type="date" id="date_to" name="date_to" class="form-control" value="{{ date_to }}" required>
+            </div>
+            <div class="form-group" style="max-width: 220px;">
+                <label for="group">Группировка</label>
+                <select id="group" name="group" class="form-control">
+                    <option value="day" {% if group == 'day' %}selected{% endif %}>По дням</option>
+                    <option value="week" {% if group == 'week' %}selected{% endif %}>По неделям</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            {% if current_role == 'admin' and cons_directors %}
+            <div class="form-group" style="min-width: 260px;">
+                <label for="cons_director_id">Директор по строительству</label>
+                <select id="cons_director_id" name="cons_director_id" class="form-control">
+                    <option value="">— все —</option>
+                    {% for d in cons_directors %}
+                    <option value="{{ d.id }}" {% if cons_director_id and cons_director_id == d.id %}selected{% endif %}>{{ d.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="form-group" style="min-width: 260px;">
+                <label for="project_id">Проект</label>
+                <select id="project_id" name="project_id" class="form-control">
+                    <option value="">— все —</option>
+                    {% for p in projects %}
+                    <option value="{{ p.id }}" {% if project_id and project_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="min-width: 260px;">
+                <label for="foreman_id">Прораб</label>
+                <select id="foreman_id" name="foreman_id" class="form-control">
+                    <option value="">— все —</option>
+                    {% for w in foremen %}
+                    <option value="{{ w.id }}" {% if foreman_id and foreman_id == w.id %}selected{% endif %}>{{ w.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <button type="submit" class="btn btn-primary">Показать</button>
+            <a href="{{ export_url }}" class="btn btn-outline">Скачать CSV</a>
+        </div>
+    </form>
+</section>
+
+<section class="card">
+    <h2>Итоги за период</h2>
+    {% if foreman_totals %}
+    <div class="users-table-wrap">
+        <table class="users-table">
+            <thead><tr><th>Прораб</th><th style="width: 180px;">Сумма</th></tr></thead>
+            <tbody>
+                {% for r in foreman_totals %}
+                <tr>
+                    <td>{{ r.foreman_name }}</td>
+                    <td>{{ '%.2f'|format(r.total_amount or 0) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty-state">За выбранный период нет закрытий.</p>
+    {% endif %}
+</section>
+
+{% if groups %}
+{% for g in groups %}
+<section class="card">
+    <div class="card-header-row">
+        <h2 style="margin: 0;">{{ g.label }}</h2>
+        <div class="card-meta">Итого: {{ '%.2f'|format(g.total_amount or 0) }}</div>
+    </div>
+    <div class="users-table-wrap">
+        <table class="users-table">
+            <thead>
+                <tr>
+                    <th style="width: 120px;">Дата</th>
+                    <th>Проект</th>
+                    <th style="width: 220px;">Прораб</th>
+                    <th style="width: 90px;">№</th>
+                    <th>Работа</th>
+                    <th style="width: 120px;">%</th>
+                    <th style="width: 140px;">Ставка</th>
+                    <th style="width: 140px;">Сумма</th>
+                    <th>Комментарий</th>
+                    {% if current_role == 'admin' %}<th style="width: 140px;">Действия</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in g.rows %}
+                <tr>
+                    <td>{{ r.report_date|dmy }}</td>
+                    <td>{{ r.project_name }}</td>
+                    <td>{{ r.foreman_name }}</td>
+                    <td><strong>{{ r.work_code or r.work_item_id }}</strong></td>
+                    <td>{{ r.work_name }}</td>
+                    <td>{{ '%.2f'|format(r.percent or 0) }}</td>
+                    <td>{{ '%.2f'|format(r.unit_price or 0) }}</td>
+                    <td>{{ '%.2f'|format(r.amount or 0) }}</td>
+                    <td>{{ r.comment or '—' }}</td>
+                    {% if current_role == 'admin' %}
+                    <td style="text-align:right;">
+                        <div style="display:flex; gap:0.5rem; justify-content:flex-end; flex-wrap:wrap;">
+                            <a href="{{ url_for('admin_daily_report_edit', daily_id=r.daily_report_id) }}" class="btn btn-small btn-outline">Редактировать</a>
+                            <form method="post" action="{{ url_for('admin_daily_report_delete', daily_id=r.daily_report_id) }}" onsubmit="return confirm('Удалить закрытие дня целиком?');">
+                                <button type="submit" class="btn btn-small btn-danger">Удалить</button>
+                            </form>
+                        </div>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endfor %}
+{% endif %}
+{% endblock %}
+

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}amoCRM — Настройки — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+<a href="{{ url_for('admin_production_report') }}" class="nav-link">Аналитика компании</a>
+<details class="nav-dropdown">
+    <summary class="nav-link">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+        <a href="{{ url_for('amocrm_projects_report') }}" class="nav-link">Проекты Sherwood Home</a>
+        <a href="{{ url_for('amocrm_sources_report') }}" class="nav-link">Источники лидов (недели)</a>
+        <a href="{{ url_for('amocrm_sources_dashboard') }}" class="nav-link">Единый TV дашборд</a>
+    </div>
+</details>
+{% include '_nav_spravochniki_dropdown.html' %}
+<details class="nav-dropdown" open>
+    <summary class="nav-link active">amoCRM</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('admin_amocrm_settings') }}" class="nav-link active">Настройки</a>
+    </div>
+</details>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr; <span>amoCRM — Настройки</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Интеграция amoCRM</h1>
+    <p class="subtitle">Подключение к <a href="https://sherwoodhome.amocrm.ru/" target="_blank" rel="noopener">sherwoodhome.amocrm.ru</a>. Укажите subdomain и долгосрочный токен из amoMarket → Интеграции.</p>
+</div>
+
+<section class="card">
+    <h2>Настройки</h2>
+    <form method="post" action="{{ url_for('admin_amocrm_settings') }}" class="form">
+        <input type="hidden" name="action" value="save">
+        <div class="form-row">
+            <div class="form-group" style="flex: 1; min-width: 200px;">
+                <label for="subdomain">Subdomain</label>
+                <input type="text" id="subdomain" name="subdomain" class="form-control" value="{{ subdomain }}" placeholder="sherwoodhome" required>
+                <p class="form-hint">Часть перед .amocrm.ru в адресе вашего аккаунта</p>
+            </div>
+            <div class="form-group" style="flex: 2; min-width: 300px;">
+                <label for="access_token">Долгосрочный токен</label>
+                <input type="password" id="access_token" name="access_token" class="form-control" autocomplete="off" placeholder="{{ 'Введите новый токен для замены' if has_token else 'Вставьте JWT-токен из amoCRM' }}">
+                {% if has_token %}
+                <p class="form-hint">Текущий токен: {{ token_display }} — введите новый, чтобы заменить</p>
+                {% endif %}
+            </div>
+            <div class="form-group" style="align-self: end;">
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+        </div>
+    </form>
+    {% if has_token %}
+    <form method="post" action="{{ url_for('admin_amocrm_test') }}" style="margin-top: 0.75rem;">
+        <button type="submit" class="btn btn-outline">Проверить подключение</button>
+    </form>
+    {% endif %}
+</section>
+
+{% if has_token %}
+<section class="card">
+    <h2>Статус</h2>
+    <p>Токен сохранён. Нажмите «Проверить подключение», чтобы убедиться, что API доступен.</p>
+</section>
+{% else %}
+<section class="card">
+    <h2>Как получить токен</h2>
+    <ol style="margin: 0.5rem 0; padding-left: 1.5rem;">
+        <li>Войдите в <a href="https://sherwoodhome.amocrm.ru/" target="_blank" rel="noopener">amoCRM</a></li>
+        <li>Откройте amoMarket → три точки → Интеграции</li>
+        <li>Создайте или выберите интеграцию</li>
+        <li>Скопируйте «Долгосрочный токен» (Authorization code → обменять на токен)</li>
+        <li>Вставьте subdomain и токен выше и нажмите «Сохранить»</li>
+    </ol>
+</section>
+{% endif %}
+{% endblock %}

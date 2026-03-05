@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Чат — {{ project.name }} — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+{% if session.get('role') == 'director_production' %}
+<a href="{{ url_for('director_production_dashboard') }}" class="nav-link">Дашборд</a>
+<a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+<a href="{{ url_for('director_production_work_approvals') }}" class="nav-link">Подтверждение работ</a>
+<a href="{{ url_for('director_stage_confirmations') }}" class="nav-link">Подтверждение этапов</a>
+<a href="{{ url_for('director_production_calendar') }}" class="nav-link">Производственный календарь</a>
+<a href="{{ url_for('director_production_analytics') }}" class="nav-link">Аналитика цеха</a>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% else %}
+<a href="{{ url_for('director_construction_dashboard') }}" class="nav-link">Дашборд</a>
+<a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+<a href="{{ url_for('director_stage_confirmations') }}" class="nav-link">Подтверждение этапов</a>
+<a href="{{ url_for('director_construction_calendar') }}" class="nav-link">Производственный календарь</a>
+{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    {% if session.get('role') == 'director_production' %}
+    <a href="{{ url_for('director_production_dashboard') }}">Директор по производству</a> &rarr;
+    {% else %}
+    <a href="{{ url_for('director_construction_dashboard') }}">Директор по строительству</a> &rarr;
+    {% endif %}
+    <span>{{ project.name }}</span> &rarr;
+    <span>Чат</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Чат проекта: {{ project.name }}</h1>
+    <p class="subtitle">{{ building_types.get(project.type, project.type) }} — участие в обсуждении спорных вопросов</p>
+</div>
+
+<div class="chat-container card">
+    <div class="chat-messages">
+        {% for m in messages %}
+        <div class="chat-message chat-msg-{{ m.msg_type or 'chat' }}">
+            <div class="chat-message-header">
+                <strong>{{ m.author_name }}</strong>
+                <span class="chat-message-time">{{ m.created_at[:16] if m.created_at else '' }}</span>
+                {% if m.msg_type == 'edit_request' %}
+                <span class="chat-msg-label chat-msg-request">Заявка на редактирование</span>
+                {% elif m.msg_type == 'edit_approval' %}
+                <span class="chat-msg-label chat-msg-approval">По заявке на одобрение</span>
+                {% elif m.msg_type == 'edit_reject' %}
+                <span class="chat-msg-label chat-msg-reject">По заявке на отмену</span>
+                {% endif %}
+                {% if m.stage_id and m.stage_name %}
+                <span class="chat-msg-stage">Этап: {{ m.stage_name }}</span>
+                {% endif %}
+            </div>
+            <div class="chat-message-body">{{ m.message }}</div>
+        </div>
+        {% else %}
+        <p class="chat-empty">Пока нет сообщений.</p>
+        {% endfor %}
+    </div>
+    <form method="post" class="chat-form">
+        <div class="chat-form-row">
+            <select name="stage_id" class="form-control chat-stage-select">
+                <option value="">Общее сообщение</option>
+                {% for st in stages %}
+                <option value="{{ st.id }}">По этапу: {{ st.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="chat-form-row">
+            <textarea name="message" rows="2" placeholder="Сообщение..." class="form-control" required></textarea>
+            <button type="submit" class="btn btn-primary">Отправить</button>
+        </div>
+    </form>
+</div>
+
+<a href="{{ url_for('director_stage_confirmations') }}" class="btn btn-outline back-link">← К подтверждению этапов</a>
+{% endblock %}

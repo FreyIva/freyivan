@@ -1,0 +1,86 @@
+<div class="amocrm-summary">
+    {% if summary.missing_house_area_lead_ids %}
+    <section class="card" style="margin-bottom: 0.8rem;">
+        <h3>Сделки без площади дома в CRM (заполнить поле "Площадь дома")</h3>
+        <p>{{ summary.missing_house_area_lead_ids|join(', ') }}</p>
+    </section>
+    {% endif %}
+    <div class="amocrm-summary-kpis">
+        <article class="amocrm-kpi">
+            <div class="amocrm-kpi-label">Сделок</div>
+            <div class="amocrm-kpi-value">{{ summary.count }}</div>
+        </article>
+        <article class="amocrm-kpi">
+            <div class="amocrm-kpi-label">Итоговая стоимость</div>
+            <div class="amocrm-kpi-value">{{ summary.total_contract }}</div>
+        </article>
+        <article class="amocrm-kpi">
+            <div class="amocrm-kpi-label">Полная стоимость</div>
+            <div class="amocrm-kpi-value">{{ summary.total_full }}</div>
+        </article>
+        <article class="amocrm-kpi">
+            <div class="amocrm-kpi-label">Подрядчики</div>
+            <div class="amocrm-kpi-value">{{ summary.total_contractors }}</div>
+        </article>
+    </div>
+
+    <div class="amocrm-summary-grid">
+        <section class="card">
+            <h3>По способу оплаты</h3>
+            <div class="users-table-wrap">
+                <table class="users-table">
+                    <thead><tr><th>Способ оплаты</th><th>Сделок</th></tr></thead>
+                    <tbody>
+                    {% for item in summary.by_payment|dictsort(false, 'value')|reverse %}
+                        <tr><td class="{% if item[0] == 'null' %}td-null{% endif %}">{{ item[0] }}</td><td>{{ item[1] }}</td></tr>
+                    {% else %}
+                        <tr><td colspan="2">Нет данных</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="card">
+            <h3>По ответственным</h3>
+            <div class="users-table-wrap">
+                <table class="users-table">
+                    <thead><tr><th>Ответственный</th><th>Сделок</th></tr></thead>
+                    <tbody>
+                    {% for item in summary.by_responsible|dictsort(false, 'value')|reverse %}
+                        <tr><td class="{% if item[0] == 'null' %}td-null{% endif %}">{{ item[0] }}</td><td>{{ item[1] }}</td></tr>
+                    {% else %}
+                        <tr><td colspan="2">Нет данных</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="card" style="grid-column: 1 / -1;">
+            <h3>ТОП-7 по итоговой стоимости договора</h3>
+            <div class="users-table-wrap">
+                <table class="users-table">
+                    <thead><tr><th>Проект</th><th>Ответственный</th><th>Итоговая стоимость</th></tr></thead>
+                    <tbody>
+                    {% for r in summary.top_by_contract %}
+                        <tr>
+                            <td>
+                                {% if r.project_name != 'null' %}
+                                <a href="https://sherwoodhome.amocrm.ru/leads/detail/{{ r.lead_id }}" target="_blank" rel="noopener">{{ r.project_name }}</a>
+                                {% else %}
+                                <span class="td-null">{{ r.project_name }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="{% if r.responsible == 'null' %}td-null{% endif %}">{{ r.responsible }}</td>
+                            <td>{{ r.contract_total }}</td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="3">Нет данных</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+</div>

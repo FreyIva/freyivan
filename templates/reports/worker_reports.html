@@ -1,0 +1,518 @@
+{% extends "base.html" %}
+
+{% block title %}Отчёты работников — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+{% if current_role == 'admin' %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+{% if can_module_reports %}
+<details class="nav-dropdown" open>
+    <summary class="nav-link active">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        {% if can_page_worker_reports %}
+        <a href="{{ url_for('worker_reports') }}" class="nav-link active">Отчёты работников</a>
+        {% endif %}
+        {% if can_page_foreman_reports %}
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        {% endif %}
+        {% if can_page_amocrm_leads %}
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+        {% endif %}
+    </div>
+</details>
+{% endif %}
+{% include '_nav_spravochniki_dropdown.html' %}
+{% elif current_role == 'director_production' %}
+<a href="{{ url_for('director_production_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_page_worker_reports %}
+<a href="{{ url_for('worker_reports') }}" class="nav-link active">Отчёты работников</a>
+{% endif %}
+<a href="{{ url_for('director_production_calendar') }}" class="nav-link">Производственный календарь</a>
+{% else %}
+<a href="{{ url_for('master_dashboard') }}" class="nav-link">Мои объекты{% if unread_chat_count %}<span class="nav-badge">{{ unread_chat_count }}</span>{% endif %}</a>
+{% if can_page_worker_reports %}
+<a href="{{ url_for('worker_reports') }}" class="nav-link active">Отчёты работников</a>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    {% if current_role == 'admin' %}
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr; <span>Отчёты работников</span>
+    {% elif current_role == 'director_production' %}
+    <a href="{{ url_for('director_production_dashboard') }}">Директор по производству</a> &rarr; <span>Отчёты работников</span>
+    {% else %}
+    <a href="{{ url_for('master_dashboard') }}">Мастер</a> &rarr; <span>Отчёты работников</span>
+    {% endif %}
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Отчёты работников</h1>
+    <p class="subtitle">Закрытия рабочих дней (только подтверждённые). Группировка по дням/неделям + выгрузка CSV.</p>
+</div>
+
+<section class="card">
+    <div class="card-header-row">
+        <h2 style="margin:0;">Фильтры</h2>
+        <div class="display-toggle-compact" aria-label="Вид отчёта">
+            <a class="display-btn {% if view == 'style3' %}active{% endif %}" href="{{ view_style3_url }}" title="Стиль 3">3</a>
+            <a class="display-btn {% if view == 'table' %}active{% endif %}" href="{{ view_table_url }}" title="Таблица">Т</a>
+        </div>
+    </div>
+    <form method="get" class="form" id="filtersForm">
+        <input type="hidden" name="view" value="{{ view }}">
+        <div class="form-row">
+            <div class="form-group" style="max-width: 220px;">
+                <label for="date_from">С</label>
+                <input type="date" id="date_from" name="date_from" class="form-control" value="{{ date_from }}" required>
+            </div>
+            <div class="form-group" style="max-width: 220px;">
+                <label for="date_to">По</label>
+                <input type="date" id="date_to" name="date_to" class="form-control" value="{{ date_to }}" required>
+            </div>
+            <div class="form-group" style="max-width: 220px;">
+                <label for="group">Группировка</label>
+                <select id="group" name="group" class="form-control">
+                    <option value="day" {% if group == 'day' %}selected{% endif %}>По дням</option>
+                    <option value="week" {% if group == 'week' %}selected{% endif %}>По неделям</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            {% if module_projects %}
+            <div class="form-group" style="min-width: 260px;">
+                <label for="project_id">Проект</label>
+                <select id="project_id" name="project_id" class="form-control">
+                    <option value="">— все —</option>
+                    {% for p in module_projects %}
+                    <option value="{{ p.id }}" {% if project_id and project_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            {% if workers %}
+            <div class="form-group" style="min-width: 260px;">
+                <label for="worker_id">Работник</label>
+                <select id="worker_id" name="worker_id" class="form-control">
+                    <option value="">— все —</option>
+                    {% for w in workers %}
+                    <option value="{{ w.id }}" {% if worker_id and worker_id == w.id %}selected{% endif %}>{{ w.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+        </div>
+        <div class="form-row">
+            <button type="submit" class="btn btn-primary">Показать</button>
+            <a href="{{ export_url }}" class="btn btn-outline">Скачать CSV</a>
+            {% if current_role == 'admin' %}
+            <a href="{{ url_for('admin_work_items') }}" class="btn btn-outline">Ставки работ</a>
+            {% endif %}
+        </div>
+    </form>
+</section>
+
+<section class="card">
+    <h2>Итоги за период</h2>
+    {% if worker_totals %}
+    <div class="users-table-wrap">
+        <table class="users-table">
+            <thead><tr><th>Работник</th><th style="width: 180px;">Сумма</th></tr></thead>
+            <tbody>
+                {% for r in worker_totals %}
+                <tr>
+                    <td>{{ r.worker_name }}</td>
+                    <td>{{ '%.2f'|format(r.total_amount or 0) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty-state">За выбранный период нет закрытий.</p>
+    {% endif %}
+</section>
+
+{% if groups %}
+{% for g in groups %}
+<section class="card">
+    <div class="card-header-row">
+        <h2 style="margin: 0;">{{ g.label }}</h2>
+        <div class="card-meta">Итого: {{ '%.2f'|format(g.total_amount or 0) }}</div>
+    </div>
+    {% if view == 'table' %}
+    <div class="users-table-wrap">
+        <table class="users-table report-cols-resizable" data-report-key="{{ report_key or '' }}">
+            <colgroup>
+                <col data-col="date" style="width: {{ col_widths.get('date', 120) }}px;">
+                <col data-col="project" style="width: {{ col_widths.get('project', 260) }}px;">
+                <col data-col="worker" style="width: {{ col_widths.get('worker', 220) }}px;">
+                <col data-col="code" style="width: {{ col_widths.get('code', 90) }}px;">
+                <col data-col="work" style="width: {{ col_widths.get('work', 420) }}px;">
+                <col data-col="pct" style="width: {{ col_widths.get('pct', 120) }}px;">
+                <col data-col="rate" style="width: {{ col_widths.get('rate', 140) }}px;">
+                <col data-col="amount" style="width: {{ col_widths.get('amount', 140) }}px;">
+                <col data-col="comment" style="width: {{ col_widths.get('comment', 320) }}px;">
+                {% if current_role == 'admin' %}
+                <col data-col="actions" style="width: {{ col_widths.get('actions', 140) }}px;">
+                {% endif %}
+            </colgroup>
+            <thead>
+                <tr class="report-filter-row report-filter-row-sticky">
+                    <th data-col="date">
+                        <input type="date" name="date_eq" form="filtersForm" class="form-control report-inline-filter" value="{{ date_eq or '' }}" style="height: 32px; padding: 0 8px; font-size: 12px;" title="Дата">
+                        <span class="col-resizer" aria-hidden="true"></span>
+                    </th>
+                    <th data-col="project">
+                        <select name="project_id" form="filtersForm" class="form-control report-inline-filter" style="height: 32px; padding: 0 8px; font-size: 12px;">
+                            <option value="" {% if not project_id %}selected{% endif %}>Проект</option>
+                            {% for p in filter_projects %}
+                            <option value="{{ p.id }}" {% if project_id and project_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="col-resizer" aria-hidden="true"></span>
+                    </th>
+                    <th data-col="worker">
+                        <select name="worker_id" form="filtersForm" class="form-control report-inline-filter" style="height: 32px; padding: 0 8px; font-size: 12px;">
+                            <option value="" {% if not worker_id %}selected{% endif %}>Работник</option>
+                            {% for u in filter_workers %}
+                            <option value="{{ u.id }}" {% if worker_id and worker_id == u.id %}selected{% endif %}>{{ u.full_name }}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="col-resizer" aria-hidden="true"></span>
+                    </th>
+                    <th data-col="code"><span class="col-resizer" aria-hidden="true"></span></th>
+                    <th data-col="work">
+                        <select name="work_item_id" form="filtersForm" class="form-control report-inline-filter" style="height: 32px; padding: 0 8px; font-size: 12px;">
+                            <option value="" {% if not work_item_id %}selected{% endif %}>Работа</option>
+                            {% for w in filter_work_items %}
+                            <option value="{{ w.id }}" {% if work_item_id and work_item_id == w.id %}selected{% endif %}>#{{ w.code or w.id }} — {{ w.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="col-resizer" aria-hidden="true"></span>
+                    </th>
+                    <th data-col="pct">
+                        <select name="pct_end" form="filtersForm" class="form-control report-inline-filter" style="height: 32px; padding: 0 8px; font-size: 12px;">
+                            <option value="" {% if not pct_end %}selected{% endif %}>%</option>
+                            {% for o in filter_pct_options %}
+                            <option value="{{ o.value }}" {% if pct_end and pct_end == o.value %}selected{% endif %}>{{ o.label }}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="col-resizer" aria-hidden="true"></span>
+                    </th>
+                    <th data-col="rate"><span class="col-resizer" aria-hidden="true"></span></th>
+                    <th data-col="amount">
+                        <select name="amount_bucket" form="filtersForm" class="form-control report-inline-filter" style="height: 32px; padding: 0 8px; font-size: 12px;">
+                            {% for o in filter_amount_options %}
+                            <option value="{{ o.value }}" {% if amount_bucket == o.value %}selected{% endif %}>{{ o.label }}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="col-resizer" aria-hidden="true"></span>
+                    </th>
+                    <th data-col="comment">
+                        <select name="comment_state" form="filtersForm" class="form-control report-inline-filter" style="height: 32px; padding: 0 8px; font-size: 12px;">
+                            <option value="" {% if not comment_state %}selected{% endif %}>Комментарий</option>
+                            {% for o in filter_comment_options %}
+                            <option value="{{ o.value }}" {% if comment_state == o.value %}selected{% endif %}>{{ o.label }}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="col-resizer" aria-hidden="true"></span>
+                    </th>
+                    {% if current_role == 'admin' %}<th data-col="actions"><span class="col-resizer" aria-hidden="true"></span></th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in g.rows %}
+                <tr>
+                    <td>{{ r.report_date|dmy }}</td>
+                    <td>{{ r.project_name }}</td>
+                    <td>{{ r.worker_name }}</td>
+                    <td><strong>{{ r.work_code or r.work_item_id }}</strong></td>
+                    <td>{{ r.work_name }}</td>
+                    <td>{{ r.percent_label or '—' }}</td>
+                    <td>{{ '%.2f'|format(r.unit_price or 0) }}</td>
+                    <td>{{ '%.2f'|format(r.amount or 0) }}</td>
+                    <td>{{ r.comment or '—' }}</td>
+                    {% if current_role == 'admin' %}
+                    <td style="text-align:right;">
+                        <div style="display:flex; gap:0.5rem; justify-content:flex-end; flex-wrap:wrap;">
+                            <a href="{{ url_for('admin_daily_report_edit', daily_id=r.daily_report_id) }}" class="btn btn-small btn-outline">Редактировать</a>
+                            <form method="post" action="{{ url_for('admin_daily_report_delete', daily_id=r.daily_report_id) }}" onsubmit="return confirm('Удалить закрытие дня целиком?');">
+                                <button type="submit" class="btn btn-small btn-danger">Удалить</button>
+                            </form>
+                        </div>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="wr-list wr-cols-resizable" data-report-key="{{ report_key or '' }}" data-cols="date,work,project,worker,pct,amount,comment{% if current_role == 'admin' %},actions{% endif %}" style="--wr-date: {{ col_widths.get('date', 120) }}px; --wr-work: {{ col_widths.get('work', 420) }}px; --wr-project: {{ col_widths.get('project', 260) }}px; --wr-worker: {{ col_widths.get('worker', 220) }}px; --wr-pct: {{ col_widths.get('pct', 120) }}px; --wr-amount: {{ col_widths.get('amount', 140) }}px; --wr-comment: {{ col_widths.get('comment', 320) }}px;{% if current_role == 'admin' %} --wr-actions: {{ col_widths.get('actions', 140) }}px;{% endif %}">
+        <div class="wr-row wr-head wr-style-3-main{% if current_role == 'admin' %}-admin{% endif %} report-filter-row report-filter-row-sticky">
+            <div class="wr-cell wr-head-cell" data-col="date">
+                <input type="date" name="date_eq" form="filtersForm" class="form-control report-inline-filter" value="{{ date_eq or '' }}" style="height: 32px; padding: 0 8px; font-size: 12px;" title="Выберите дату">
+                <span class="col-resizer" aria-hidden="true"></span>
+            </div>
+            <div class="wr-cell wr-head-cell" data-col="work">
+                <select name="work_item_id" form="filtersForm" class="form-control report-inline-filter" style="height: 32px; padding: 0 8px; font-size: 12px;">
+                    <option value="" {% if not work_item_id %}selected{% endif %}>Работа</option>
+                    {% for w in filter_work_items %}
+                    <option value="{{ w.id }}" {% if work_item_id and work_item_id == w.id %}selected{% endif %}>#{{ w.code or w.id }} — {{ w.name }}</option>
+                    {% endfor %}
+                </select>
+                <span class="col-resizer" aria-hidden="true"></span>
+            </div>
+            <div class="wr-cell wr-head-cell" data-col="project">
+                <select name="project_id" form="filtersForm" class="form-control report-inline-filter" style="height: 32px; padding: 0 8px; font-size: 12px;">
+                    <option value="" {% if not project_id %}selected{% endif %}>Проект</option>
+                    {% for p in filter_projects %}
+                    <option value="{{ p.id }}" {% if project_id and project_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+                <span class="col-resizer" aria-hidden="true"></span>
+            </div>
+            <div class="wr-cell wr-head-cell" data-col="worker">
+                <select name="worker_id" form="filtersForm" class="form-control report-inline-filter" style="height: 32px; padding: 0 8px; font-size: 12px;">
+                    <option value="" {% if not worker_id %}selected{% endif %}>Работник</option>
+                    {% for u in filter_workers %}
+                    <option value="{{ u.id }}" {% if worker_id and worker_id == u.id %}selected{% endif %}>{{ u.full_name }}</option>
+                    {% endfor %}
+                </select>
+                <span class="col-resizer" aria-hidden="true"></span>
+            </div>
+            <div class="wr-cell wr-head-cell" data-col="pct">
+                <select name="pct_end" form="filtersForm" class="form-control report-inline-filter" style="height: 32px; padding: 0 8px; font-size: 12px;">
+                    <option value="" {% if not pct_end %}selected{% endif %}>%</option>
+                    {% for o in filter_pct_options %}
+                    <option value="{{ o.value }}" {% if pct_end and pct_end == o.value %}selected{% endif %}>{{ o.label }}</option>
+                    {% endfor %}
+                </select>
+                <span class="col-resizer" aria-hidden="true"></span>
+            </div>
+            <div class="wr-cell wr-head-cell" data-col="amount">
+                <select name="amount_bucket" form="filtersForm" class="form-control report-inline-filter" style="height: 32px; padding: 0 8px; font-size: 12px;">
+                    {% for o in filter_amount_options %}
+                    <option value="{{ o.value }}" {% if amount_bucket == o.value %}selected{% endif %}>{{ o.label }}</option>
+                    {% endfor %}
+                </select>
+                <span class="col-resizer" aria-hidden="true"></span>
+            </div>
+            <div class="wr-cell wr-head-cell" data-col="comment">
+                <select name="comment_state" form="filtersForm" class="form-control report-inline-filter" style="height: 32px; padding: 0 8px; font-size: 12px;">
+                    <option value="" {% if not comment_state %}selected{% endif %}>Комментарий</option>
+                    {% for o in filter_comment_options %}
+                    <option value="{{ o.value }}" {% if comment_state == o.value %}selected{% endif %}>{{ o.label }}</option>
+                    {% endfor %}
+                </select>
+                <span class="col-resizer" aria-hidden="true"></span>
+            </div>
+            {% if current_role == 'admin' %}
+            <div class="wr-cell wr-head-cell" data-col="actions">—<span class="col-resizer" aria-hidden="true"></span></div>
+            {% endif %}
+        </div>
+        {% for r in g.rows %}
+        <div class="wr-row wr-style-3-main{% if current_role == 'admin' %}-admin{% endif %}">
+            <div class="wr-cell wr-mono" title="{{ r.report_date|dmy }}"><span class="wr-pill">{{ r.report_date|dmy }}</span></div>
+            <div class="wr-cell" title="{{ r.work_name }}"><span class="wr-pill">#{{ r.work_code or r.work_item_id }}</span> <span class="wr-main-text">{{ r.work_name }}</span></div>
+            <div class="wr-cell" title="{{ r.project_name }}"><span class="wr-pill wr-pill-muted">{{ r.project_name }}</span></div>
+            <div class="wr-cell" title="{{ r.worker_name }}"><span class="wr-pill wr-pill-muted">{{ r.worker_name }}</span></div>
+            <div class="wr-cell wr-mono" title="{{ r.percent_label or '—' }}"><span class="wr-pill wr-pill-accent">{{ r.percent_label or '—' }}</span></div>
+            <div class="wr-cell wr-mono" title="Сумма {{ '%.2f'|format(r.amount or 0) }}"><span class="wr-pill"><strong>{{ '%.2f'|format(r.amount or 0) }}</strong></span></div>
+            <div class="wr-cell" title="{{ r.comment or '—' }}">{{ r.comment or '—' }}</div>
+            {% if current_role == 'admin' %}
+            <div class="wr-cell">
+                <div class="wr-actions">
+                    <a href="{{ url_for('admin_daily_report_edit', daily_id=r.daily_report_id) }}" class="btn btn-small btn-outline">Редактировать</a>
+                    <form method="post" action="{{ url_for('admin_daily_report_delete', daily_id=r.daily_report_id) }}" onsubmit="return confirm('Удалить закрытие дня целиком?');">
+                        <button type="submit" class="btn btn-small btn-danger">Удалить</button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+{% endfor %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function() {
+        document.addEventListener('change', function(e) {
+            var el = e.target;
+            if (!el || !el.classList || !el.classList.contains('report-inline-filter')) return;
+            var f = document.getElementById('filtersForm');
+            if (f) f.submit();
+        });
+    })();
+</script>
+{% if view == 'table' %}
+<script>
+    (function() {
+        var reportKey = "{{ report_key or '' }}";
+        if (!reportKey) return;
+
+        function isResizeEnabled() {
+            return !window.matchMedia || !window.matchMedia('(max-width: 768px)').matches;
+        }
+
+        var MIN_W = 70;
+        var MAX_W = 520;
+
+        function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+
+        function getAllCols(colKey) {
+            return Array.prototype.slice.call(document.querySelectorAll('.report-cols-resizable col[data-col="' + colKey + '"]'));
+        }
+
+        function getFirstTable() {
+            return document.querySelector('.report-cols-resizable');
+        }
+
+        function collectWidths() {
+            var t = getFirstTable();
+            if (!t) return {};
+            var cols = t.querySelectorAll('colgroup col[data-col]');
+            var out = {};
+            cols.forEach(function(c) {
+                var k = c.getAttribute('data-col');
+                var w = Math.round(c.getBoundingClientRect().width);
+                if (k && w) out[k] = w;
+            });
+            return out;
+        }
+
+        function saveWidths(widths) {
+            try {
+                fetch("{{ url_for('save_report_column_widths') }}", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({report: reportKey, widths: widths})
+                }).catch(function(){});
+            } catch (e) {}
+        }
+
+        var dragging = null;
+        document.addEventListener('mousedown', function(e) {
+            if (!isResizeEnabled()) return;
+            var handle = e.target && e.target.classList && e.target.classList.contains('col-resizer') ? e.target : null;
+            if (!handle) return;
+            var th = handle.closest('th');
+            if (!th) return;
+            var colKey = th.getAttribute('data-col');
+            if (!colKey) return;
+
+            var cols = getAllCols(colKey);
+            if (!cols.length) return;
+            var startW = cols[0].getBoundingClientRect().width;
+            dragging = {colKey: colKey, startX: e.clientX, startW: startW};
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!dragging) return;
+            var dx = e.clientX - dragging.startX;
+            var newW = clamp(Math.round(dragging.startW + dx), MIN_W, MAX_W);
+            getAllCols(dragging.colKey).forEach(function(c) {
+                c.style.width = newW + 'px';
+            });
+        });
+
+        document.addEventListener('mouseup', function() {
+            if (!dragging) return;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            var widths = collectWidths();
+            saveWidths(widths);
+            dragging = null;
+        });
+    })();
+</script>
+{% else %}
+<script>
+    (function() {
+        function isResizeEnabled() {
+            return !window.matchMedia || !window.matchMedia('(max-width: 768px)').matches;
+        }
+
+        var MIN_W = 70;
+        var MAX_W = 520;
+
+        function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+
+        function getVar(col) { return '--wr-' + col; }
+
+        var dragging = null;
+        document.addEventListener('mousedown', function(e) {
+            if (!isResizeEnabled()) return;
+            var handle = e.target && e.target.classList && e.target.classList.contains('col-resizer') ? e.target : null;
+            if (!handle) return;
+            var cell = handle.closest('.wr-cell');
+            var list = cell && cell.closest('.wr-list.wr-cols-resizable');
+            if (!list) return;
+            var colKey = cell.getAttribute('data-col');
+            if (!colKey) return;
+
+            var reportKey = list.getAttribute('data-report-key');
+            var startW = cell.getBoundingClientRect().width;
+            dragging = {list: list, colKey: colKey, startX: e.clientX, startW: startW, reportKey: reportKey};
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!dragging) return;
+            var dx = e.clientX - dragging.startX;
+            var newW = clamp(Math.round(dragging.startW + dx), MIN_W, MAX_W);
+            var val = newW + 'px';
+            document.querySelectorAll('.wr-list.wr-cols-resizable').forEach(function(l) {
+                l.style.setProperty(getVar(dragging.colKey), val);
+            });
+        });
+
+        document.addEventListener('mouseup', function() {
+            if (!dragging) return;
+            var list = dragging.list;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            var widths = {};
+            var firstRow = list.querySelector('.wr-row');
+            if (firstRow) {
+                firstRow.querySelectorAll('.wr-cell[data-col]').forEach(function(cell) {
+                    var k = cell.getAttribute('data-col');
+                    if (k) widths[k] = Math.round(cell.getBoundingClientRect().width);
+                });
+            }
+            if (dragging.reportKey) {
+                try {
+                    fetch("{{ url_for('save_report_column_widths') }}", {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({report: dragging.reportKey, widths: widths})
+                    }).catch(function(){});
+                } catch (e) {}
+            }
+            dragging = null;
+        });
+    })();
+</script>
+{% endif %}
+{% endblock %}
+

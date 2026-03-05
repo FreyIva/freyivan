@@ -1,0 +1,8 @@
+<details class="nav-dropdown" {% if request.endpoint == 'admin_work_items' %}open{% endif %}>
+    <summary class="nav-link {% if request.endpoint == 'admin_work_items' %}active{% endif %}">Справочники</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('admin_work_items') }}" class="nav-link {% if request.endpoint == 'admin_work_items' and not request.args.get('type') %}active{% endif %}">Все виды</a>
+        <a href="{{ url_for('admin_work_items', type='production') }}" class="nav-link {% if request.endpoint == 'admin_work_items' and request.args.get('type') == 'production' %}active{% endif %}">Работы производства</a>
+        <a href="{{ url_for('admin_work_items', type='construction') }}" class="nav-link {% if request.endpoint == 'admin_work_items' and request.args.get('type') == 'construction' %}active{% endif %}">Работы на участке</a>
+    </div>
+</details>

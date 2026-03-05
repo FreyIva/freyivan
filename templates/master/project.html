@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }} — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('master_dashboard') }}" class="nav-link">Мои объекты{% if unread_chat_count %}<span class="nav-badge">{{ unread_chat_count }}</span>{% endif %}</a>
+<a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('master_dashboard') }}">Мастер</a> &rarr;
+    <span>{{ project.name }}</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header project-header">
+    <h1>{{ project.name }}</h1>
+    <p class="subtitle">{{ building_types.get(project.type, project.type) }} — {{ project.address }}</p>
+    <a href="{{ url_for('master_project_chat', project_id=project.id) }}" class="btn btn-outline">Чат проекта</a>
+</div>
+
+<section class="card">
+    <h2>Работники на объекте</h2>
+    <p class="subtitle">Откройте объект для нужных работников (они увидят его у себя и смогут закрывать день).</p>
+    <div class="form-row">
+        <form method="post" action="{{ url_for('master_project', project_id=project.id) }}" class="form" style="flex: 1; min-width: 260px;">
+            <input type="hidden" name="action" value="assign_worker">
+            <div class="form-group">
+                <label for="worker_id">Выдать доступ работнику</label>
+                <select id="worker_id" name="worker_id" class="form-control" required>
+                    <option value="">— выбрать —</option>
+                    {% for w in workers %}
+                    <option value="{{ w.id }}">{{ w.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Открыть объект</button>
+        </form>
+        <div style="flex: 1; min-width: 260px;">
+            <div class="form-group">
+                <label>У кого есть доступ</label>
+                {% if assigned_workers %}
+                <div class="users-table-wrap">
+                    <table class="users-table">
+                        <thead><tr><th>Работник</th><th></th></tr></thead>
+                        <tbody>
+                        {% for w in assigned_workers %}
+                            <tr>
+                                <td>{{ w.full_name }}</td>
+                                <td style="text-align:right;">
+                                    <form method="post" action="{{ url_for('master_project', project_id=project.id) }}" style="display:inline;" onsubmit="return confirm('Снять доступ у работника {{ w.full_name }}?');">
+                                        <input type="hidden" name="action" value="unassign_worker">
+                                        <input type="hidden" name="worker_id" value="{{ w.id }}">
+                                        <button type="submit" class="btn btn-small btn-danger">Снять доступ</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="card-meta">Пока никто не назначен.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="stages-section">
+    <h2>Этапы работ</h2>
+    {% for s in stages %}
+    <div class="stage-card {% if s.edit_request_pending %}stage-pending-edit{% elif s.reports_count %}stage-done{% else %}stage-pending{% endif %}">
+        <div class="stage-card-header">
+            <span class="stage-status-icon">
+                {% if s.edit_request_pending %}⏸{% elif s.reports_count %}✅{% else %}⏳{% endif %}
+            </span>
+            <span class="stage-name">{{ s.name }}</span>
+            {% if s.planned_start_date or s.planned_end_date %}
+            <span class="stage-dates">Начало: {{ s.planned_start_date|dmy if s.planned_start_date else '—' }} · Окончание: {{ s.planned_end_date|dmy if s.planned_end_date else '—' }}</span>
+            {% endif %}
+            <span class="stage-status-label">
+                {% if s.edit_request_pending %}На рассмотрении{% elif s.reports_count %}Выполнен{% else %}В работе{% endif %}
+            </span>
+        </div>
+
+        {% if s.reports %}
+        <div class="stage-reports">
+            <p class="reports-title">Отчёты:</p>
+            <div class="photo-carousel-wrap">
+                <div class="photo-carousel stage-photo-carousel">
+                    {% for r in s.reports %}
+                    <div class="photo-carousel-slide">
+                        {% if r.get('photo_token') %}
+                        <a href="{{ url_for('media_file', token=r['photo_token']) }}" class="photo-carousel-item photo-open-full" data-fullscreen>
+                            <img src="{{ url_for('media_file', token=r['photo_token']) }}" alt="Фото отчёта">
+                        {% else %}
+                        <a href="{{ url_for('static', filename=r['photo_path']) }}" class="photo-carousel-item photo-open-full" data-fullscreen>
+                            <img src="{{ url_for('static', filename=r['photo_path']) }}" alt="Фото отчёта">
+                        {% endif %}
+                        </a>
+                        {% if r.get('comment') %}<p class="report-comment">{{ r['comment'] }}</p>{% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% if s.reports|length > 1 %}
+                <p class="photo-carousel-hint">← пролистайте для просмотра →</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if not s.edit_request_pending %}
+        <div class="stage-actions-row">
+            <button type="button" class="btn btn-primary add-report-btn" data-stage-id="{{ s.id }}" data-stage-name="{{ s.name }}" data-has-reports="{{ '1' if s.reports_count else '0' }}">
+                {% if s.reports_count %}Добавить отчёт{% else %}Добавить отчёт (закрыть этап){% endif %}
+            </button>
+            {% if s.reports_count %}
+            {% if s.can_confirm_stage %}
+            <form method="post" action="{{ url_for('stage_confirm', stage_id=s.id) }}" style="display:inline;">
+                <button type="submit" class="btn btn-outline">Подтвердить этап</button>
+            </form>
+            {% elif s.stage_confirmed_at %}
+            <span class="badge badge-admin">Подтверждён</span>
+            {% endif %}
+            <button type="button" class="btn btn-outline edit-stage-btn" data-stage-id="{{ s.id }}" data-stage-name="{{ s.name }}">
+                Редактировать
+            </button>
+            {% endif %}
+        </div>
+        {% else %}
+        <p class="edit-pending-note">Заявка на редактирование ожидает подтверждения администратора</p>
+        {% endif %}
+
+        <div class="stage-chat-section">
+            <p class="stage-chat-title">Переписка по этапу «{{ s.name }}»:</p>
+            {% if stage_chat.get(s.id) %}
+            {% for m in stage_chat[s.id] %}
+            <div class="stage-chat-message chat-msg-{{ m.msg_type or 'chat' }}">
+                <span class="stage-chat-author">{{ m.author_name }}</span>
+                <span class="stage-chat-time">{{ m.created_at[:16] if m.created_at else '' }}</span>
+                {% if m.msg_type == 'edit_request' %}<span class="chat-msg-label chat-msg-request">Заявка</span>
+                {% elif m.msg_type == 'edit_approval' %}<span class="chat-msg-label chat-msg-approval">Одобрение</span>
+                {% elif m.msg_type == 'edit_reject' %}<span class="chat-msg-label chat-msg-reject">Отмена</span>{% endif %}
+                <div class="stage-chat-body">{{ m.message }}</div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <p class="stage-chat-empty">Пока нет сообщений по этому этапу</p>
+            {% endif %}
+            <form method="post" action="{{ url_for('master_project_chat', project_id=project.id) }}" class="stage-chat-form">
+                <input type="hidden" name="stage_id" value="{{ s.id }}">
+                <input type="hidden" name="from_page" value="project">
+                <div class="stage-chat-form-row">
+                    <input type="text" name="message" placeholder="Написать по этапу..." class="form-control" required>
+                    <button type="submit" class="btn btn-small btn-primary">Отправить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Модальное окно редактирования этапа -->
+<div id="editModal" class="modal">
+    <div class="modal-content">
+        <span class="modal-close edit-modal-close">&times;</span>
+        <h3>Редактировать этап: <span id="editModalStageName"></span></h3>
+        <p class="edit-warning">Вы действительно хотите отредактировать этап? Заявка будет отправлена на рассмотрение администратору. Текущие фото будут заменены новыми.</p>
+        <form method="post" action="{{ url_for('master_project', project_id=project.id) }}" enctype="multipart/form-data" id="editForm">
+            <input type="hidden" name="action" value="create_edit_request">
+            <input type="hidden" name="stage_id" id="editModalStageId">
+            <div class="form-group">
+                <label for="photo_edit">Новые фотографии (заменят текущие)</label>
+                <input type="file" id="photo_edit" name="photo_edit" accept=".jpg,.jpeg,.png" multiple class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="comment_edit">Комментарий</label>
+                <textarea id="comment_edit" name="comment" rows="4" class="form-control" placeholder="Описание"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Отправить заявку</button>
+        </form>
+    </div>
+</div>
+
+<!-- Модальное окно добавления отчёта -->
+<div id="reportModal" class="modal">
+    <div class="modal-content">
+        <span class="modal-close">&times;</span>
+        <h3>Добавить отчёт по этапу: <span id="modalStageName"></span></h3>
+        <form method="post" action="{{ url_for('master_project', project_id=project.id) }}" enctype="multipart/form-data" id="reportForm">
+            <input type="hidden" name="action" value="add_report">
+            <input type="hidden" name="stage_id" id="modalStageId">
+            <div class="form-group">
+                <label for="photo">Фотографии (JPG, PNG, макс. 10 МБ каждая, можно несколько)</label>
+                <input type="file" id="photo" name="photo" accept=".jpg,.jpeg,.png" multiple class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="comment">Комментарий</label>
+                <textarea id="comment" name="comment" rows="4" class="form-control" placeholder="Описание выполненной работы"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Отправить отчёт</button>
+        </form>
+    </div>
+</div>
+
+<!-- Lightbox для просмотра фото на весь экран -->
+<div id="lightbox" class="lightbox">
+    <span class="lightbox-close">&times;</span>
+    <img src="" alt="Фото" class="lightbox-img">
+</div>
+
+<a href="{{ url_for('master_dashboard') }}" class="btn btn-outline back-link">← К списку объектов</a>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/master.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Чат — {{ project.name }} — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('foreman_dashboard') }}" class="nav-link">Мои объекты</a>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('foreman_dashboard') }}">Прораб</a> &rarr;
+    <a href="{{ url_for('foreman_project', project_id=project.id) }}">{{ project.name }}</a> &rarr;
+    <span>Чат</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Чат проекта: {{ project.name }}</h1>
+    <p class="subtitle">Общение с администратором и участниками проекта</p>
+</div>
+
+<div class="chat-container card">
+    <div class="chat-messages">
+        {% for m in messages %}
+        <div class="chat-message chat-msg-{{ m.msg_type or 'chat' }}">
+            <div class="chat-message-header">
+                <strong>{{ m.author_name }}</strong>
+                <span class="chat-message-time">{{ m.created_at[:16] if m.created_at else '' }}</span>
+                {% if m.msg_type == 'edit_request' %}
+                <span class="chat-msg-label chat-msg-request">Заявка на редактирование</span>
+                {% elif m.msg_type == 'edit_approval' %}
+                <span class="chat-msg-label chat-msg-approval">По заявке на одобрение</span>
+                {% elif m.msg_type == 'edit_reject' %}
+                <span class="chat-msg-label chat-msg-reject">По заявке на отмену</span>
+                {% endif %}
+                {% if m.stage_id and m.stage_name %}
+                <span class="chat-msg-stage">Этап: {{ m.stage_name }}</span>
+                {% endif %}
+            </div>
+            <div class="chat-message-body">{{ m.message }}</div>
+        </div>
+        {% else %}
+        <p class="chat-empty">Пока нет сообщений.</p>
+        {% endfor %}
+    </div>
+    <form method="post" class="chat-form">
+        <div class="chat-form-row">
+            <select name="stage_id" class="form-control chat-stage-select">
+                <option value="">Общее сообщение</option>
+                {% for st in stages %}
+                <option value="{{ st.id }}">По этапу: {{ st.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="chat-form-row">
+            <textarea name="message" rows="2" placeholder="Сообщение..." class="form-control" required></textarea>
+            <button type="submit" class="btn btn-primary">Отправить</button>
+        </div>
+    </form>
+</div>
+
+<a href="{{ url_for('foreman_project', project_id=project.id) }}" class="btn btn-outline back-link">← К объекту</a>
+{% endblock %}

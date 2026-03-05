@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Подтверждение этапов — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+{% if session.get('role') == 'director_production' %}
+<a href="{{ url_for('director_production_dashboard') }}" class="nav-link">Дашборд</a>
+<a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+<a href="{{ url_for('director_production_work_approvals') }}" class="nav-link">Подтверждение работ</a>
+<a href="{{ url_for('director_stage_confirmations') }}" class="nav-link active">Подтверждение этапов</a>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% else %}
+<a href="{{ url_for('director_construction_dashboard') }}" class="nav-link">Дашборд</a>
+<a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+<a href="{{ url_for('director_stage_confirmations') }}" class="nav-link active">Подтверждение этапов</a>
+{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <span>Подтверждение этапов</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Подтверждение этапов</h1>
+    <p class="subtitle">
+        {% if session.get('role') == 'director_production' %}
+        Модульные дома: подтвердите факт выполнения этапа после отчёта мастера.
+        {% else %}
+        Каркас/газобетон/пенополистирол: подтвердите факт выполнения этапа после отчёта прораба.
+        {% endif %}
+    </p>
+</div>
+
+{% if stages %}
+<section class="card">
+    <div class="users-table-wrap">
+        <table class="users-table">
+            <thead>
+                <tr><th>Проект</th><th>Тип</th><th>Этап</th><th>Действие</th></tr>
+            </thead>
+            <tbody>
+                {% for s in stages %}
+                <tr>
+                    <td>{{ s.project_name }}</td>
+                    <td>{{ building_types.get(s.type, s.type) }}</td>
+                    <td>{{ s.name }}</td>
+                    <td>
+                        <form method="post" action="{{ url_for('stage_confirm', stage_id=s.id) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-small btn-primary">Подтвердить</button>
+                        </form>
+                        <a href="{{ url_for('director_project_chat', project_id=s.project_id) }}" class="btn btn-small btn-outline">Чат</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% else %}
+<p class="empty-state">Нет этапов, ожидающих подтверждения.</p>
+{% endif %}
+{% endblock %}

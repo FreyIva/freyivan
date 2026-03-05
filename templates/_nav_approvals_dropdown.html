@@ -1,0 +1,37 @@
+{# Выпадающий список: Согласование, Заявки на проекты, Заявки на редактирование, Уведомления — показывается ролям, у которых есть хотя бы один пункт #}
+{% set role = session.get('role') %}
+{% set has_approvals = role == 'admin' %}
+{% set has_takeover_requests = role == 'admin' %}
+{% set has_edit_requests = role in ('admin', 'director_production', 'director_construction') %}
+{% set has_notifications = role in ('admin', 'manager_op', 'client') %}
+{% set show_dropdown = has_approvals or has_takeover_requests or has_edit_requests or has_notifications %}
+{% if session.get('user_id') and show_dropdown %}
+{% set total_badge = (pending_document_approvals_count|default(0)) + (pending_takeover_requests_count|default(0)) + (pending_edit_requests_count|default(0)) + (unread_notifications_count|default(0)) %}
+<details class="nav-dropdown nav-approvals-dropdown">
+    <summary class="nav-link">
+        Согласование и заявки{% if total_badge %}<span class="nav-badge">{{ total_badge }}</span>{% endif %}
+    </summary>
+    <div class="nav-dropdown-menu">
+        {% if has_approvals %}
+        <a href="{{ url_for('admin_document_approvals') }}" class="nav-link{% if request.endpoint == 'admin_document_approvals' %} active{% endif %}">
+            Согласование{% if pending_document_approvals_count %}<span class="nav-badge">{{ pending_document_approvals_count }}</span>{% endif %}
+        </a>
+        {% endif %}
+        {% if has_takeover_requests %}
+        <a href="{{ url_for('admin_takeover_requests') }}" class="nav-link{% if request.endpoint == 'admin_takeover_requests' %} active{% endif %}">
+            Заявки на проекты{% if pending_takeover_requests_count %}<span class="nav-badge">{{ pending_takeover_requests_count }}</span>{% endif %}
+        </a>
+        {% endif %}
+        {% if has_edit_requests %}
+        <a href="{{ url_for('admin_edit_requests') }}" class="nav-link{% if request.endpoint == 'admin_edit_requests' %} active{% endif %}">
+            Заявки на редактирование{% if pending_edit_requests_count %}<span class="nav-badge">{{ pending_edit_requests_count }}</span>{% endif %}
+        </a>
+        {% endif %}
+        {% if has_notifications %}
+        <a href="{{ url_for('notifications_page') }}" class="nav-link{% if request.endpoint == 'notifications_page' %} active{% endif %}">
+            Уведомления{% if unread_notifications_count %}<span class="nav-badge">{{ unread_notifications_count }}</span>{% endif %}
+        </a>
+        {% endif %}
+    </div>
+</details>
+{% endif %}

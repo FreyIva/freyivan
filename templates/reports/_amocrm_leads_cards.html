@@ -1,0 +1,21 @@
+{% for r in rows %}
+<article class="amocrm-lead-card">
+    <header class="amocrm-lead-card-head">
+        <span class="amocrm-lead-title">{{ r.project_name }}</span>
+        <span class="amocrm-lead-price">{{ r.total_price }}</span>
+    </header>
+    <div class="amocrm-lead-meta">
+        <span><strong>Ответственный:</strong> {{ r.responsible }}</span>
+        <span><strong>Оплата:</strong> {{ r.payment_method }}</span>
+        <span><strong>Площадь, м²:</strong> {{ r.area_sqm }}</span>
+        <span><strong>Пл. застройки:</strong> {{ r.build_area }}</span>
+        <span><strong>Пл. дома:</strong> {{ r.house_area }}</span>
+        <span><strong>Допы:</strong> {{ r.extras }}</span>
+    </div>
+    <p class="amocrm-lead-comment{% if r.comment == 'null' %} td-null{% endif %}">
+        {{ r.comment|urlize(target='_blank', rel='noopener noreferrer') }}
+    </p>
+</article>
+{% else %}
+<p class="card-meta">Нет данных</p>
+{% endfor %}

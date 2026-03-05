@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}Производственный календарь — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+{% if session.get('role') == 'manager_op' %}
+<a href="{{ url_for('manager_op_dashboard') }}" class="nav-link">Менеджер ОП</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link active">Производственный календарь</a>
+{% else %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link active">Производственный календарь</a>
+<details class="nav-dropdown">
+    <summary class="nav-link">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+    </div>
+</details>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    {% if session.get('role') == 'manager_op' %}
+    <a href="{{ url_for('manager_op_dashboard') }}">Менеджер ОП</a> &rarr; <span>Производственный календарь</span>
+    {% else %}
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr; <span>Производственный календарь</span>
+    {% endif %}
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header gantt-page-header">
+    <div>
+        <h1>Производственный календарь</h1>
+        <p class="subtitle">Диаграмма Ганта: <span class="gantt-legend-green">■</span> план (дата этапа) · <span class="gantt-legend-blue">■</span> факт (сдано мастером) · <span class="gantt-legend-red">■</span> просрочка (факт позже плана)</p>
+    </div>
+    <div class="gantt-header-actions">
+        {% if session.get('role') == 'admin' %}
+        <a href="{{ url_for('admin_production_report') }}" class="btn btn-primary">Аналитика компании</a>
+        {% endif %}
+        <button type="button" class="btn btn-small btn-outline" id="gantt-toggle-all">Свернуть всё</button>
+    </div>
+</div>
+
+<section class="card gantt-card">
+    {% if projects %}
+    <div class="gantt-header">
+        <div class="gantt-label-col">Проект / Этап</div>
+        <div class="gantt-timeline-col">
+            <span class="gantt-date-start">{{ date_min }}</span>
+            <span class="gantt-date-end">{{ date_max }}</span>
+        </div>
+    </div>
+    <div class="gantt-body">
+        {% for p in projects %}
+        <div class="gantt-project" data-project-id="{{ p.id }}">
+            <div class="gantt-project-header" onclick="this.parentElement.classList.toggle('expanded')">
+                <span class="gantt-toggle">▼</span>
+                <a href="{{ url_for('admin_project_stages', project_id=p.id) }}" class="gantt-project-name" onclick="event.stopPropagation()">
+                    <span class="gantt-project-type">[{{ p.type_label or p.type or '—' }}]</span> {{ p.name }}{% if p.overdue_days %}<span class="gantt-project-overdue"> просрочка {{ p.overdue_days }} дн.</span>{% endif %}
+                </a>
+                <span class="gantt-project-meta">{{ p.master_name or '—' }}</span>
+            </div>
+            <div class="gantt-stages">
+                {% for s in p.stages %}
+                <div class="gantt-stage-row{% if s.overdue %} gantt-stage-overdue{% endif %}" data-stage-name="{{ s.stage_name }}" data-planned="{{ s.planned_date or 'не задан' }}" data-completed="{{ s.completed_at or 'не выполнен' }}">
+                    <div class="gantt-stage-label">
+                        <span class="gantt-stage-num">{{ s.order_num }}.</span> {{ s.stage_name }}
+                        <span class="gantt-stage-dates">
+                            {% if s.planned_date %}План: {{ s.planned_date|dmy }}{% else %}План: не задан{% endif %}
+                            {% if s.completed_at %} · Факт: {{ s.completed_at }}{% if s.days_diff is not none and s.days_diff != 0 %}{% if s.days_diff > 0 %} <span class="gantt-days-diff gantt-days-early">+{{ s.days_diff }} дн.</span>{% elif s.days_diff < 0 %} <span class="gantt-days-diff gantt-days-late">−{{ -s.days_diff }} дн.</span>{% endif %}{% endif %}{% if s.overdue %} <strong class="gantt-overdue-label">(просрочка)</strong>{% endif %}{% else %} · Факт: не сдано{% endif %}
+                        </span>
+                    </div>
+                    <div class="gantt-bar-wrap gantt-bar-hoverable">
+                        <div class="gantt-bar-track">
+                            <div class="gantt-bar gantt-bar-green" style="left: {{ s.left_pct }}%; width: {{ s.green_width_pct }}%;"></div>
+                            {% if s.show_actual_bar %}
+                            <div class="gantt-bar gantt-bar-actual" style="left: {{ s.actual_left_pct }}%; width: {{ s.actual_width_pct }}%;"></div>
+                            {% endif %}
+                            {% if s.red_width_pct > 0 %}
+                            <div class="gantt-bar gantt-bar-red" style="left: {{ s.red_left_pct }}%; width: {{ s.red_width_pct }}%;"></div>
+                            {% endif %}
+                        </div>
+                        <div class="gantt-tooltip">
+                            <strong>{{ s.stage_name }}</strong>
+                            <div class="gantt-tooltip-row">
+                                <span class="gantt-tooltip-label">План:</span>
+                                {% if s.planned_start or s.planned_end %}
+                                {{ s.planned_start|dmy if s.planned_start else '—' }} — {{ s.planned_end|dmy if s.planned_end else '—' }}
+                                {% else %}
+                                {{ s.planned_date|dmy if s.planned_date else 'не задан' }}
+                                {% endif %}
+                            </div>
+                            <div class="gantt-tooltip-row">
+                                <span class="gantt-tooltip-label">Факт:</span>
+                                {{ s.completed_at|dmy if s.completed_at else 'не выполнен' }}
+                            </div>
+                            {% if s.completed_at and s.days_diff is not none and s.days_diff != 0 %}
+                            <div class="gantt-tooltip-row gantt-tooltip-diff">
+                                <span class="gantt-tooltip-label">Разница:</span>
+                                {% if s.days_diff > 0 %}
+                                <span class="gantt-days-early">+{{ s.days_diff }} дн. раньше</span>
+                                {% else %}
+                                <span class="gantt-days-late">−{{ -s.days_diff }} дн. позже</span>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">Нет данных. Добавьте проекты и этапы с плановыми датами.</p>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    var btn = document.getElementById('gantt-toggle-all');
+    if (btn) {
+        var expanded = true;
+        btn.onclick = function() {
+            expanded = !expanded;
+            document.querySelectorAll('.gantt-project').forEach(function(el) {
+                el.classList.toggle('expanded', expanded);
+            });
+            btn.textContent = expanded ? 'Свернуть всё' : 'Развернуть всё';
+        };
+    }
+    document.querySelectorAll('.gantt-bar-hoverable').forEach(function(wrap) {
+        wrap.addEventListener('click', function(e) {
+            e.preventDefault();
+            var active = document.querySelector('.gantt-bar-hoverable.gantt-tooltip-visible');
+            if (active && active !== wrap) active.classList.remove('gantt-tooltip-visible');
+            wrap.classList.toggle('gantt-tooltip-visible');
+        });
+    });
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.gantt-bar-hoverable')) {
+            document.querySelectorAll('.gantt-bar-hoverable.gantt-tooltip-visible').forEach(function(el) {
+                el.classList.remove('gantt-tooltip-visible');
+            });
+        }
+    });
+})();
+</script>
+{% endblock %}

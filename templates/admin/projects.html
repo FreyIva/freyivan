@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+
+{% block title %}Проекты — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+{% if session.get('role') == 'manager_op' %}
+<a href="{{ url_for('manager_op_dashboard') }}" class="nav-link">Менеджер ОП</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link active">Проекты</a>
+<a href="{{ url_for('manager_op_takeover') }}" class="nav-link">Взять проект</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+{% else %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link active">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+<details class="nav-dropdown">
+    <summary class="nav-link">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+    </div>
+</details>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    {% if session.get('role') == 'manager_op' %}
+    <a href="{{ url_for('manager_op_dashboard') }}">Менеджер ОП</a> &rarr; <span>Проекты</span>
+    {% else %}
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr; <span>Проекты</span>
+    {% endif %}
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Управление проектами</h1>
+</div>
+
+<section class="card">
+    <h2>Создать новый проект</h2>
+    <form method="post" action="{{ url_for('admin_projects') }}" enctype="multipart/form-data" class="form form-inline">
+        <input type="hidden" name="action" value="create">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="name">Название объекта</label>
+                <input type="text" id="name" name="name" required class="form-control" placeholder="Например: Дом на Ленина, 5">
+            </div>
+            <div class="form-group">
+                <label for="type">Тип строения</label>
+                <select id="type" name="type" required class="form-control">
+                    {% for key, label in building_types.items() %}
+                    <option value="{{ key }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="address">Адрес</label>
+                <input type="text" id="address" name="address" required class="form-control" placeholder="Полный адрес">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="client_id">Заказчик</label>
+                <select id="client_id" name="client_id" required class="form-control">
+                    <option value="">— Выберите —</option>
+                    {% for c in clients %}
+                    <option value="{{ c.id }}">{{ c.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" id="master-foreman-group">
+                <label id="master-foreman-label" for="master_id">Мастер</label>
+                <select id="master_id" name="master_id" required class="form-control">
+                    <option value="">— Выберите —</option>
+                    <!-- заполняется скриптом по типу проекта -->
+                </select>
+            </div>
+            {% if session.get('role') != 'manager_op' and managers_op %}
+            <div class="form-group">
+                <label for="responsible_manager_id">Ответственный ОП</label>
+                <select id="responsible_manager_id" name="responsible_manager_id" required class="form-control">
+                    <option value="">— Выберите —</option>
+                    {% for m in managers_op %}
+                    <option value="{{ m.id }}">{{ m.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% else %}
+            <input type="hidden" name="responsible_manager_id" value="{{ session.get('user_id') }}">
+            {% endif %}
+        </div>
+        {% if directors_construction %}
+        <div class="form-row" id="director-construction-row" style="display:none;">
+            <div class="form-group">
+                <label for="director_construction_id">Директор по строительству</label>
+                <select id="director_construction_id" name="director_construction_id" class="form-control">
+                    <option value="">— не назначен —</option>
+                    {% for d in directors_construction %}
+                    <option value="{{ d.id }}">{{ d.full_name }}</option>
+                    {% endfor %}
+                </select>
+                <p class="card-meta">Каркас, газоблок, пенополистирол — проект виден выбранному директору по строительству.</p>
+            </div>
+        </div>
+        {% endif %}
+        <div class="form-row">
+            <div class="form-group">
+                <label for="photo">Фото проекта (JPG, PNG)</label>
+                <input type="file" id="photo" name="photo" accept=".jpg,.jpeg,.png" class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="contract">Договор (PDF, DOC, DOCX)</label>
+                <input type="file" id="contract" name="contract" accept=".pdf,.doc,.docx" class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="estimate">Смета (PDF, DOC, DOCX, XLS, XLSX)</label>
+                <input type="file" id="estimate" name="estimate" accept=".pdf,.doc,.docx,.xls,.xlsx" class="form-control">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Создать проект</button>
+    </form>
+    <script>
+    (function() {
+        var masters = {{ masters|tojson }};
+        var foremen = {{ foremen|tojson }};
+        var typeSelect = document.getElementById('type');
+        var labelEl = document.getElementById('master-foreman-label');
+        var selectEl = document.getElementById('master_id');
+        var dcRow = document.getElementById('director-construction-row');
+        function isConstruction(t) { return ['frame','gasblock','penopolistirol'].indexOf(t) >= 0; }
+        function refresh() {
+            var t = typeSelect.value;
+            var list = isConstruction(t) ? foremen : masters;
+            labelEl.textContent = isConstruction(t) ? 'Прораб' : 'Мастер';
+            selectEl.innerHTML = '<option value="">— Выберите —</option>';
+            for (var i = 0; i < list.length; i++) {
+                var opt = document.createElement('option');
+                opt.value = list[i].id;
+                opt.textContent = list[i].full_name;
+                selectEl.appendChild(opt);
+            }
+            if (dcRow) dcRow.style.display = isConstruction(t) ? '' : 'none';
+        }
+        typeSelect.addEventListener('change', refresh);
+        refresh();
+    })();
+    </script>
+</section>
+
+<section class="card">
+    <h2>Список проектов</h2>
+    {% if projects %}
+    <div class="users-table-wrap">
+        <table class="admin-projects-table" id="projects-table">
+            <thead>
+                <tr><th>Превью</th><th>Объект</th><th>Тип</th><th>Адрес</th><th>Заказчик</th><th>Мастер / Прораб</th><th>Ответственный ОП</th><th>Действия</th></tr>
+                <tr class="table-filter-row">
+                    <th></th>
+                    <th><input type="text" class="form-control form-control-sm table-filter" data-col="name" placeholder="Поиск..." title="Фильтр по названию"></th>
+                    <th><select class="form-control form-control-sm table-filter" data-col="type" title="Фильтр по типу">
+                        <option value="">Все</option>
+                        {% for key, label in building_types.items() %}
+                        <option value="{{ key }}">{{ label }}</option>
+                        {% endfor %}
+                    </select></th>
+                    <th><input type="text" class="form-control form-control-sm table-filter" data-col="address" placeholder="Поиск..." title="Фильтр по адресу"></th>
+                    <th><input type="text" class="form-control form-control-sm table-filter" data-col="client" placeholder="Поиск..." title="Фильтр по заказчику"></th>
+                    <th><input type="text" class="form-control form-control-sm table-filter" data-col="master" placeholder="Поиск..." title="Фильтр по мастеру"></th>
+                    <th><input type="text" class="form-control form-control-sm table-filter" data-col="responsible" placeholder="Поиск..." title="Фильтр по ответственному ОП"></th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in projects %}
+                <tr data-name="{{ (p.name or '')|lower }}" data-type="{{ p.type or '' }}" data-address="{{ (p.address or '')|lower }}" data-client="{{ (p.client_name or '')|lower }}" data-master="{{ (p.master_name or '')|lower }}" data-responsible="{{ (p.responsible_manager_name or '')|lower }}">
+                    <td>
+                        {% if p.get('photo_token') %}
+                            <img src="{{ url_for('media_file', token=p['photo_token']) }}" class="admin-projects-thumb" alt="">
+                        {% elif p.get('photo_path') %}
+                            <img src="{{ url_for('static', filename=p['photo_path']) }}" class="admin-projects-thumb" alt="">
+                        {% else %}
+                            <span class="admin-projects-thumb admin-projects-thumb-placeholder"></span>
+                        {% endif %}
+                    </td>
+                    <td><a href="{{ url_for('admin_project_stages', project_id=p.id) }}"><strong>{{ p.name }}</strong>{% if p.get('completed_at') %} <span class="badge badge-completed">Завершён</span>{% endif %}{% if p.get('edit_requests_count', 0) %} <span class="project-badge">{{ p.edit_requests_count }}</span>{% endif %}</a></td>
+                    <td>{{ building_types.get(p.type, p.type) }}</td>
+                    <td>{{ p.address }}</td>
+                    <td>{{ p.client_name }}</td>
+                    <td>{{ p.master_name }}</td>
+                    <td>{{ p.responsible_manager_name or '—' }}</td>
+                    <td>
+                        <a href="{{ url_for('admin_project_edit', project_id=p.id) }}" class="btn btn-small btn-outline">Изменить</a>
+                        <form method="post" action="{{ url_for('admin_project_delete', project_id=p.id) }}" style="display:inline;" onsubmit="return confirm('Удалить проект и все его этапы?');">
+                            <button type="submit" class="btn btn-small btn-danger">Удалить</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p>Проектов пока нет.</p>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+{% if projects %}
+<script>
+(function() {
+    var table = document.getElementById('projects-table');
+    if (!table) return;
+    var filters = table.querySelectorAll('.table-filter');
+    var tbody = table.querySelector('tbody');
+    var rows = tbody ? tbody.querySelectorAll('tr') : [];
+
+    function applyFilters() {
+        var values = {};
+        filters.forEach(function(f) {
+            var col = f.getAttribute('data-col');
+            var v = (f.value || '').trim().toLowerCase();
+            values[col] = v;
+        });
+        rows.forEach(function(row) {
+            var show = true;
+            if (values.name && (row.getAttribute('data-name') || '').indexOf(values.name) < 0) show = false;
+            if (values.type && row.getAttribute('data-type') !== values.type) show = false;
+            if (values.address && (row.getAttribute('data-address') || '').indexOf(values.address) < 0) show = false;
+            if (values.client && (row.getAttribute('data-client') || '').indexOf(values.client) < 0) show = false;
+            if (values.master && (row.getAttribute('data-master') || '').indexOf(values.master) < 0) show = false;
+            if (values.responsible && (row.getAttribute('data-responsible') || '').indexOf(values.responsible) < 0) show = false;
+            row.style.display = show ? '' : 'none';
+        });
+    }
+
+    filters.forEach(function(f) {
+        f.addEventListener('input', applyFilters);
+        f.addEventListener('change', applyFilters);
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

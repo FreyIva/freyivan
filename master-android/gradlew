@@ -1,0 +1,13 @@
+#!/bin/sh
+# Запуск сборки: откройте проект в Android Studio (Build → Build APK)
+# Или: gradle wrapper (один раз), затем ./gradlew assembleDebug
+set -e
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+if [ -f "gradle/wrapper/gradle-wrapper.jar" ]; then
+  exec java -Dorg.gradle.daemon=true -jar gradle/wrapper/gradle-wrapper.jar "$@"
+else
+  echo "Сначала создайте wrapper: gradle wrapper"
+  echo "Либо откройте проект в Android Studio"
+  exit 1
+fi

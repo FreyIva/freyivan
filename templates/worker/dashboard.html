@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Мои объекты — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('worker_dashboard') }}" class="nav-link active">Мои объекты</a>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('worker_dashboard') }}">Работник</a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Объекты для отчёта</h1>
+    <p class="subtitle">Отчётность перед мастером по проделанной работе</p>
+</div>
+
+{% if no_master %}
+<section class="card">
+    <p>Вам не назначен мастер. Обратитесь к администратору, чтобы в настройках пользователя указать «Отчитывается перед».</p>
+</section>
+{% elif projects %}
+<section class="card">
+    <h2>Список объектов</h2>
+    <ul class="project-list-simple">
+        {% for p in projects %}
+        <li><a href="{{ url_for('worker_project', project_id=p.id) }}">{{ p.name }}</a> — {{ p.address }}</li>
+        {% endfor %}
+    </ul>
+</section>
+{% else %}
+<section class="card">
+    <p>Нет объектов для отчёта.</p>
+</section>
+{% endif %}
+{% endblock %}

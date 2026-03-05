@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#0b1220" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+    <title>{% block title %}Шервуд Хоум СтройКонтроль{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="theme-style-1">
+    <header class="header">
+        <div class="header-inner">
+            <a href="{{ url_for('index') }}" class="logo">
+                <img src="https://static.tildacdn.com/tild6530-3435-4335-b239-626434333438/photo.svg" alt="Sherwood Home" class="logo-img">
+            </a>
+            <button type="button" class="nav-toggle" id="nav-toggle" aria-label="Меню" aria-expanded="false">
+                <span class="nav-toggle-bar"></span>
+                <span class="nav-toggle-bar"></span>
+                <span class="nav-toggle-bar"></span>
+            </button>
+            <nav class="nav" id="nav-menu">
+                {% block nav %}{% endblock %}
+                {% include '_nav_approvals_dropdown.html' %}
+                <div class="theme-toggle" id="report-theme-toggle" aria-label="Визуальный стиль отчётов" title="Визуальный стиль отчётов">
+                    <button type="button" class="theme-toggle-btn is-active" data-report-theme="1">1</button>
+                    <button type="button" class="theme-toggle-btn" data-report-theme="2">2</button>
+                    <button type="button" class="theme-toggle-btn" data-report-theme="3">3</button>
+                    <button type="button" class="theme-toggle-btn" data-report-theme="4">4</button>
+                    <button type="button" class="theme-toggle-btn" data-report-theme="5">5</button>
+                </div>
+                {% if can_impersonate %}
+                <form method="post" action="{{ url_for('switch_user') }}" class="impersonation-form">
+                    <select name="user_id" class="form-control impersonation-select" onchange="this.form.submit()" title="Войти под пользователем">
+                        <option value="">Войти как…</option>
+                        {% if is_impersonating %}
+                        <option value="{{ super_admin_id }}">← Вернуться к себе</option>
+                        <option disabled>──────────</option>
+                        {% endif %}
+                        {% for u in impersonation_users %}
+                        <option value="{{ u.id }}" {% if session.get('user_id') == u.id %}selected{% endif %}>
+                            {{ u.full_name }} ({{ u.username }}) — {{ u.role_label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </form>
+                {% endif %}
+                {% if session.get('user_id') %}
+                <a href="{{ url_for('logout') }}" class="btn btn-outline btn-logout" title="Разлогиниться">Выйти</a>
+                {% endif %}
+            </nav>
+        </div>
+    {% if session.get('role') in ['admin', 'master'] %}
+        <div class="refresh-progress-wrap" id="refresh-progress-wrap">
+            <div class="refresh-progress-bar" id="refresh-progress-bar"></div>
+        </div>
+        {% endif %}
+    </header>
+
+    {% block breadcrumbs %}{% endblock %}
+
+    <main class="main">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="flash-messages">
+                {% for category, message in messages %}
+                <div class="flash flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        {% endwith %}
+
+        {% if header_greeting %}
+        <div class="greeting-banner" role="status" aria-live="polite">
+            <div class="greeting-banner-text">{{ header_greeting }}</div>
+        </div>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <p>Шервуд Хоум СтройКонтроль &copy; 2026</p>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+    <script>
+        (function() {
+            // Маска телефона: +7 (903) 301-90-09
+            document.querySelectorAll('.phone-input').forEach(function(input) {
+                function formatPhone() {
+                    var v = input.value.replace(/\D/g, '');
+                    if (v.length > 0 && v[0] === '8') v = '7' + v.slice(1);
+                    if (v.length > 0 && v[0] !== '7') v = '7' + v;
+                    v = v.slice(0, 11);
+                    if (v.length === 0) {
+                        input.value = '';
+                        return;
+                    }
+                    var s = '+7';
+                    if (v.length > 1) s += ' (' + v.slice(1, 4);
+                    if (v.length >= 4) s += ') ' + v.slice(4, 7);
+                    if (v.length >= 7) s += '-' + v.slice(7, 9);
+                    if (v.length >= 9) s += '-' + v.slice(9, 11);
+                    input.value = s;
+                }
+                input.addEventListener('input', formatPhone);
+                input.addEventListener('paste', function(e) {
+                    setTimeout(formatPhone, 0);
+                });
+            });
+
+            // Toggle password visibility
+            document.querySelectorAll('[data-toggle-password]').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var wrap = btn.closest('.password-field');
+                    if (!wrap) return;
+                    var input = wrap.querySelector('input[data-password], input[type="password"], input[type="text"]');
+                    if (!input) return;
+                    var isPassword = input.getAttribute('type') === 'password';
+                    input.setAttribute('type', isPassword ? 'text' : 'password');
+                    btn.textContent = isPassword ? 'Скрыть' : 'Показать';
+                    btn.setAttribute('aria-label', isPassword ? 'Скрыть пароль' : 'Показать пароль');
+                    input.focus();
+                });
+            });
+
+            var toggle = document.getElementById('nav-toggle');
+            var nav = document.getElementById('nav-menu');
+            if (toggle && nav) {
+                toggle.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var open = nav.classList.toggle('nav-open');
+                    toggle.setAttribute('aria-expanded', open);
+                });
+                document.addEventListener('click', function(e) {
+                    if (nav.classList.contains('nav-open') && !nav.contains(e.target) && !toggle.contains(e.target)) {
+                        nav.classList.remove('nav-open');
+                        toggle.setAttribute('aria-expanded', 'false');
+                    }
+                });
+            }
+
+            // Закрытие выпадающих меню в шапке при клике вне (details.nav-dropdown)
+            var dropdowns = Array.prototype.slice.call(document.querySelectorAll('details.nav-dropdown'));
+            if (dropdowns.length) {
+                var closeTimers = new WeakMap();
+                var supportsHover = false;
+                try {
+                    supportsHover = window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+                } catch (e) {
+                    supportsHover = false;
+                }
+                var adjustDropdownPosition = function(d) {
+                    if (!d || !d.open) return;
+                    var menu = d.querySelector('.nav-dropdown-menu');
+                    if (!menu) return;
+                    // Сброс перед расчётом
+                    menu.style.setProperty('--dropdown-shift-x', '0px');
+                    menu.style.setProperty('--dropdown-shift-y', '0px');
+                    // На мобильной раскладке меню статичное — подстройка не нужна
+                    if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) return;
+                    var rect = menu.getBoundingClientRect();
+                    var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+                    var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+                    var shift = 0;
+                    if (rect.right > vw - 8) {
+                        shift -= (rect.right - (vw - 8));
+                    }
+                    if (rect.left + shift < 8) {
+                        shift += (8 - (rect.left + shift));
+                    }
+                    var shiftY = 0;
+                    if (rect.bottom > vh - 8) {
+                        shiftY -= (rect.bottom - (vh - 8));
+                    }
+                    var minTop = 8;
+                    if (rect.top + shiftY < minTop) {
+                        shiftY += (minTop - (rect.top + shiftY));
+                    }
+                    menu.style.setProperty('--dropdown-shift-x', shift + 'px');
+                    menu.style.setProperty('--dropdown-shift-y', shiftY + 'px');
+                };
+                dropdowns.forEach(function(d) {
+                    d.addEventListener('toggle', function() {
+                        if (!d.open) return;
+                        dropdowns.forEach(function(other) {
+                            if (other !== d) other.open = false;
+                        });
+                        adjustDropdownPosition(d);
+                    });
+                    d.addEventListener('mouseenter', function() {
+                        if (supportsHover) d.open = true;
+                        var t = closeTimers.get(d);
+                        if (t) {
+                            clearTimeout(t);
+                            closeTimers.delete(d);
+                        }
+                        adjustDropdownPosition(d);
+                    });
+                    d.addEventListener('mouseleave', function() {
+                        if (!d.open) return;
+                        // Небольшая задержка, чтобы меню не "дёргалось" на границе.
+                        var timer = setTimeout(function() {
+                            d.open = false;
+                            closeTimers.delete(d);
+                        }, 120);
+                        closeTimers.set(d, timer);
+                    });
+                });
+                document.addEventListener('click', function(e) {
+                    dropdowns.forEach(function(d) {
+                        if (d.open && !d.contains(e.target)) d.open = false;
+                    });
+                });
+                document.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape') {
+                        dropdowns.forEach(function(d) { d.open = false; });
+                    }
+                });
+                window.addEventListener('resize', function() {
+                    dropdowns.forEach(function(d) {
+                        if (d.open) adjustDropdownPosition(d);
+                    });
+                });
+            }
+            var wrap = document.getElementById('refresh-progress-wrap');
+            if (wrap) wrap.style.display = 'none';
+            if (false && wrap) {  /* автообновление отключено на всех страницах */
+                var bar = document.getElementById('refresh-progress-bar');
+                var DURATION = 60;
+                var start = Date.now();
+                var saveAndReload = function() {
+                    try {
+                        var expanded = [];
+                        document.querySelectorAll('.gantt-project.expanded').forEach(function(el) {
+                            var id = el.getAttribute('data-project-id');
+                            if (id) expanded.push(id);
+                        });
+                        sessionStorage.setItem('gantt_expanded', JSON.stringify(expanded));
+                    } catch (e) {}
+                    location.reload();
+                };
+                var tick = function() {
+                    var elapsed = (Date.now() - start) / 1000;
+                    var pct = Math.min(100, (elapsed / DURATION) * 100);
+                    if (bar) bar.style.width = pct + '%';
+                    if (elapsed >= DURATION) {
+                        saveAndReload();
+                        return;
+                    }
+                    requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+                try {
+                    var stored = sessionStorage.getItem('gantt_expanded');
+                    if (stored) {
+                        var ids = JSON.parse(stored);
+                        document.querySelectorAll('.gantt-project').forEach(function(el) {
+                            var pid = el.getAttribute('data-project-id');
+                            el.classList.toggle('expanded', ids.indexOf(pid) >= 0);
+                        });
+                        var btn = document.getElementById('gantt-toggle-all');
+                        if (btn) btn.textContent = ids.length > 0 ? 'Свернуть всё' : 'Развернуть всё';
+                        sessionStorage.removeItem('gantt_expanded');
+                    }
+                } catch (e) {}
+            }
+
+            // Переключение визуального стиля отчётов (классика / премиум)
+            (function () {
+                var root = document.body;
+                var toggle = document.getElementById('report-theme-toggle');
+                if (!root || !toggle) return;
+
+                var THEMES = ['1','2','3','4','5'];
+
+                function applyTheme(theme) {
+                    var t = String(theme || '');
+                    if (t === 'classic') t = '1';
+                    if (t === 'premium') t = '2';
+                    if (THEMES.indexOf(t) === -1) t = '1';
+                    THEMES.forEach(function(id){ root.classList.remove('theme-style-' + id); });
+                    root.classList.add('theme-style-' + t);
+                    try { localStorage.setItem('report_theme', t); } catch (e) {}
+                    toggle.querySelectorAll('.theme-toggle-btn').forEach(function (btn) {
+                        btn.classList.toggle('is-active', btn.getAttribute('data-report-theme') === t);
+                    });
+                }
+
+                var stored = null;
+                try { stored = localStorage.getItem('report_theme'); } catch (e) { stored = null; }
+                applyTheme(stored || '1');
+
+                toggle.addEventListener('click', function (e) {
+                    var btn = e.target.closest('[data-report-theme]');
+                    if (!btn) return;
+                    var theme = btn.getAttribute('data-report-theme');
+                    applyTheme(theme);
+                });
+            })();
+
+        })();
+    </script>
+</body>
+</html>

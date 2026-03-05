@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">СтройКонтроль Мастер</string>
+    <string name="menu_settings">Настройки</string>
+    <string name="settings_title">Настройки сервера</string>
+    <string name="server_url_hint">https://ваш-сервер.ru или http://192.168.1.10:5000</string>
+    <string name="server_url_label">Адрес сервера StroyControl</string>
+    <string name="save">Сохранить</string>
+    <string name="error_no_url">Укажите адрес сервера в настройках</string>
+    <string name="loading">Загрузка…</string>
+</resources>

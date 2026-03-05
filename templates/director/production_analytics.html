@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}Аналитика цеха модульных домов — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+{% if scope == 'admin' %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+<a href="{{ url_for('admin_production_report') }}" class="nav-link active">Аналитика компании</a>
+<details class="nav-dropdown">
+    <summary class="nav-link">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+    </div>
+</details>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% else %}
+<a href="{{ url_for('director_production_dashboard') }}" class="nav-link">Дашборд</a>
+<a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+<a href="{{ url_for('director_production_work_approvals') }}" class="nav-link">Подтверждение работ</a>
+<a href="{{ url_for('director_stage_confirmations') }}" class="nav-link">Подтверждение этапов</a>
+<a href="{{ url_for('director_production_calendar') }}" class="nav-link">Производственный календарь</a>
+<a href="{{ url_for('director_production_analytics') }}" class="nav-link active">Аналитика цеха</a>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    {% if scope == 'admin' %}
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr; <span>Аналитика цеха модульных домов</span>
+    {% else %}
+    <a href="{{ url_for('director_production_dashboard') }}">Директор по производству</a> &rarr; <span>Аналитика цеха</span>
+    {% endif %}
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header analytics-header">
+    <h1>Аналитика цеха модульных домов</h1>
+    <p class="subtitle">Соблюдение сроков, эффективность выпуска</p>
+    <a href="{{ url_for('director_production_calendar') if scope == 'director' else url_for('admin_production_calendar') }}" class="btn btn-outline">→ Календарь</a>
+</div>
+
+<div class="analytics-dashboard">
+    <section class="analytics-kpi-row">
+        <div class="analytics-kpi-card">
+            <span class="analytics-kpi-value {% if stats.pct_ontime >= 80 %}analytics-good{% elif stats.pct_ontime >= 60 %}analytics-warn{% else %}analytics-bad{% endif %}">{{ stats.pct_ontime }}%</span>
+            <span class="analytics-kpi-label">Соблюдение сроков</span>
+            <span class="analytics-kpi-hint">этапов сдано вовремя или раньше</span>
+        </div>
+        <div class="analytics-kpi-card">
+            <span class="analytics-kpi-value">{{ stats.stages_completed }}</span>
+            <span class="analytics-kpi-label">Этапов выполнено</span>
+            <span class="analytics-kpi-hint">из {{ stats.total_stages }} всего</span>
+        </div>
+        <div class="analytics-kpi-card">
+            <span class="analytics-kpi-value analytics-good">{{ stats.stages_early }}</span>
+            <span class="analytics-kpi-label">Досрочно</span>
+            <span class="analytics-kpi-hint">в среднем +{{ stats.avg_early_days }} дн.</span>
+        </div>
+        <div class="analytics-kpi-card">
+            <span class="analytics-kpi-value analytics-bad">{{ stats.stages_late }}</span>
+            <span class="analytics-kpi-label">С просрочкой</span>
+            <span class="analytics-kpi-hint">в среднем −{{ stats.avg_delay_days }} дн.</span>
+        </div>
+        <div class="analytics-kpi-card">
+            <span class="analytics-kpi-value">{{ stats.total_projects }}</span>
+            <span class="analytics-kpi-label">Проектов</span>
+            <span class="analytics-kpi-hint">{{ stats.projects_with_delays }} с просрочками</span>
+        </div>
+    </section>
+
+    <section class="analytics-chart-row">
+        <div class="analytics-chart-card">
+            <h3>Распределение этапов</h3>
+            <div class="analytics-bar-chart">
+                {% set total = stats.stages_completed or 1 %}
+                <div class="analytics-bar-row">
+                    <span class="analytics-bar-label">Вовремя / раньше</span>
+                    <div class="analytics-bar-track">
+                        <div class="analytics-bar analytics-bar-good" style="width: {{ (stats.stages_ontime / total * 100)|round(1) }}%;"></div>
+                    </div>
+                    <span class="analytics-bar-value">{{ stats.stages_ontime }}</span>
+                </div>
+                <div class="analytics-bar-row">
+                    <span class="analytics-bar-label">С просрочкой</span>
+                    <div class="analytics-bar-track">
+                        <div class="analytics-bar analytics-bar-bad" style="width: {{ (stats.stages_late / total * 100)|round(1) }}%;"></div>
+                    </div>
+                    <span class="analytics-bar-value">{{ stats.stages_late }}</span>
+                </div>
+                <div class="analytics-bar-row">
+                    <span class="analytics-bar-label">В работе</span>
+                    <div class="analytics-bar-track">
+                        <div class="analytics-bar analytics-bar-pending" style="width: {{ ((stats.stages_in_progress / stats.total_stages * 100) if stats.total_stages else 0)|round(1) }}%;"></div>
+                    </div>
+                    <span class="analytics-bar-value">{{ stats.stages_in_progress }}</span>
+                </div>
+            </div>
+        </div>
+        <div class="analytics-chart-card">
+            <h3>Эффективность по мастерам</h3>
+            {% if stats.by_master %}
+            <div class="analytics-master-table-wrap">
+                <table class="analytics-master-table">
+                    <thead>
+                        <tr><th>Мастер</th><th>Выполнено</th><th>Вовремя</th><th>Просрочка</th><th>%</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for master, m in stats.by_master.items() %}
+                        <tr>
+                            <td>{{ master }}</td>
+                            <td>{{ m.completed }}/{{ m.total }}</td>
+                            <td>{{ m.ontime }}</td>
+                            <td>{% if m.late %}<span class="analytics-bad">{{ m.late }}</span>{% else %}—{% endif %}</td>
+                            <td>{% if m.completed %}<span class="{% if (m.ontime / m.completed * 100)|round(0) >= 80 %}analytics-good{% elif (m.ontime / m.completed * 100)|round(0) >= 60 %}analytics-warn{% else %}analytics-bad{% endif %}">{{ (m.ontime / m.completed * 100)|round(0) }}%</span>{% else %}—{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="analytics-empty">Нет данных по мастерам</p>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="analytics-summary-row">
+        <div class="analytics-summary-card">
+            <h3>Сводка</h3>
+            <ul class="analytics-summary-list">
+                <li><strong>Всего просрочено:</strong> {{ stats.total_delay_days }} дн. по {{ stats.stages_late }} этапам</li>
+                <li><strong>Всего сэкономлено:</strong> {{ stats.total_early_days }} дн. по {{ stats.stages_early }} этапам</li>
+                <li><strong>Проектов с просрочками:</strong> {{ stats.projects_with_delays }} из {{ stats.total_projects }}</li>
+            </ul>
+        </div>
+    </section>
+</div>
+{% endblock %}

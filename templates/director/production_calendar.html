@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Производственный календарь — Директор по производству{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('director_production_dashboard') }}" class="nav-link">Дашборд</a>
+<a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+<a href="{{ url_for('director_production_work_approvals') }}" class="nav-link">Подтверждение работ</a>
+<a href="{{ url_for('director_stage_confirmations') }}" class="nav-link">Подтверждение этапов</a>
+<a href="{{ url_for('director_production_calendar') }}" class="nav-link active">Производственный календарь</a>
+<a href="{{ url_for('director_production_analytics') }}" class="nav-link">Аналитика цеха</a>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('director_production_dashboard') }}">Директор по производству</a> &rarr; <span>Производственный календарь</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Производственный календарь</h1>
+        <p class="subtitle">Модульные дома вашего направления. Диаграмма Ганта: <span class="gantt-legend-green">■</span> план · <span class="gantt-legend-blue">■</span> факт · <span class="gantt-legend-red">■</span> просрочка</p>
+    </div>
+    <button type="button" class="btn btn-small btn-outline" id="gantt-toggle-all">Свернуть всё</button>
+</div>
+
+<section class="card gantt-card">
+    {% if projects %}
+    <div class="gantt-header">
+        <div class="gantt-label-col">Проект / Этап</div>
+        <div class="gantt-timeline-col">
+            <span class="gantt-date-start">{{ date_min }}</span>
+            <span class="gantt-date-end">{{ date_max }}</span>
+        </div>
+    </div>
+    <div class="gantt-body">
+        {% for p in projects %}
+        <div class="gantt-project" data-project-id="{{ p.id }}">
+            <div class="gantt-project-header" onclick="this.parentElement.classList.toggle('expanded')">
+                <span class="gantt-toggle">▼</span>
+                <span class="gantt-project-name">
+                    <span class="gantt-project-type">[{{ p.type_label or p.type or '—' }}]</span> {{ p.name }}{% if p.overdue_days %}<span class="gantt-project-overdue"> просрочка {{ p.overdue_days }} дн.</span>{% endif %}
+                </span>
+                <span class="gantt-project-meta">{{ p.master_name or '—' }}</span>
+            </div>
+            <div class="gantt-stages">
+                {% for s in p.stages %}
+                <div class="gantt-stage-row{% if s.overdue %} gantt-stage-overdue{% endif %}">
+                    <div class="gantt-stage-label">
+                        <span class="gantt-stage-num">{{ s.order_num }}.</span> {{ s.stage_name }}
+                        <span class="gantt-stage-dates">
+                            {% if s.planned_start %}Начало: {{ s.planned_start|dmy }}{% endif %}
+                            {% if s.planned_end %} · Окончание: {{ s.planned_end|dmy }}{% endif %}
+                            {% if s.completed_at %} · Факт: {{ s.completed_at }}{% if s.days_diff is not none and s.days_diff != 0 %}{% if s.days_diff > 0 %} <span class="gantt-days-diff gantt-days-early">+{{ s.days_diff }} дн.</span>{% elif s.days_diff < 0 %} <span class="gantt-days-diff gantt-days-late">−{{ -s.days_diff }} дн.</span>{% endif %}{% endif %}{% if s.overdue %} <strong class="gantt-overdue-label">(просрочка)</strong>{% endif %}{% else %} · Факт: не сдано{% endif %}
+                        </span>
+                    </div>
+                    <div class="gantt-bar-wrap gantt-bar-hoverable">
+                        <div class="gantt-bar-track">
+                            <div class="gantt-bar gantt-bar-green" style="left: {{ s.left_pct }}%; width: {{ s.green_width_pct }}%;"></div>
+                            {% if s.show_actual_bar %}
+                            <div class="gantt-bar gantt-bar-actual" style="left: {{ s.actual_left_pct }}%; width: {{ s.actual_width_pct }}%;"></div>
+                            {% endif %}
+                            {% if s.red_width_pct > 0 %}
+                            <div class="gantt-bar gantt-bar-red" style="left: {{ s.red_left_pct }}%; width: {{ s.red_width_pct }}%;"></div>
+                            {% endif %}
+                        </div>
+                        <div class="gantt-tooltip">
+                            <strong>{{ s.stage_name }}</strong>
+                            <div class="gantt-tooltip-row">
+                                <span class="gantt-tooltip-label">План:</span>
+                                {{ s.planned_start|dmy if s.planned_start else '—' }} — {{ s.planned_end|dmy if s.planned_end else '—' }}
+                            </div>
+                            <div class="gantt-tooltip-row">
+                                <span class="gantt-tooltip-label">Факт:</span>
+                                {{ s.completed_at|dmy if s.completed_at else 'не выполнен' }}
+                            </div>
+                            {% if s.completed_at and s.days_diff is not none and s.days_diff != 0 %}
+                            <div class="gantt-tooltip-row gantt-tooltip-diff">
+                                <span class="gantt-tooltip-label">Разница:</span>
+                                {% if s.days_diff > 0 %}
+                                <span class="gantt-days-early">+{{ s.days_diff }} дн. раньше</span>
+                                {% else %}
+                                <span class="gantt-days-late">−{{ -s.days_diff }} дн. позже</span>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">Нет модульных проектов в вашем направлении.</p>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    var btn = document.getElementById('gantt-toggle-all');
+    if (btn) {
+        var expanded = true;
+        btn.onclick = function() {
+            expanded = !expanded;
+            document.querySelectorAll('.gantt-project').forEach(function(el) {
+                el.classList.toggle('expanded', expanded);
+            });
+            btn.textContent = expanded ? 'Свернуть всё' : 'Развернуть всё';
+        };
+    }
+    document.querySelectorAll('.gantt-bar-hoverable').forEach(function(wrap) {
+        wrap.addEventListener('click', function(e) {
+            e.preventDefault();
+            var active = document.querySelector('.gantt-bar-hoverable.gantt-tooltip-visible');
+            if (active && active !== wrap) active.classList.remove('gantt-tooltip-visible');
+            wrap.classList.toggle('gantt-tooltip-visible');
+        });
+    });
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.gantt-bar-hoverable')) {
+            document.querySelectorAll('.gantt-bar-hoverable.gantt-tooltip-visible').forEach(function(el) {
+                el.classList.remove('gantt-tooltip-visible');
+            });
+        }
+    });
+})();
+</script>
+{% endblock %}

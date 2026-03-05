@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Редактировать закрытие дня — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<details class="nav-dropdown" open>
+    <summary class="nav-link">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+    </div>
+</details>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr;
+    <span>Редактировать закрытие дня</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Редактировать закрытие дня</h1>
+    <p class="subtitle">
+        Пользователь: <strong>{{ header.user_name }}</strong> ({{ header.user_role }}) ·
+        Проект: <strong>{{ header.project_name }}</strong> ·
+        Дата: <strong>{{ header.report_date|dmy }}</strong>
+    </p>
+</div>
+
+<section class="card">
+    <form method="post" class="form">
+        <div class="users-table-wrap">
+            <table class="users-table">
+                <thead>
+                    <tr>
+                        <th>Работа</th>
+                        <th style="width:140px;">%</th>
+                        <th>Комментарий</th>
+                        <th style="width:140px;">Удалить</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for it in items %}
+                    <tr>
+                        <td>
+                            {{ it.work_name }}
+                            <input type="hidden" name="item_id" value="{{ it.id }}">
+                        </td>
+                        <td><input type="number" name="percent" class="form-control" min="0" max="100" step="1" value="{{ it.percent }}"></td>
+                        <td><input type="text" name="comment" class="form-control" value="{{ it.comment or '' }}"></td>
+                        <td style="text-align:center;">
+                            <input type="checkbox" name="delete_item" value="{{ it.id }}">
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="form-row" style="margin-top:0.75rem;">
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <a href="{{ url_for('worker_reports') }}" class="btn btn-outline">К отчётам работников</a>
+            <a href="{{ url_for('foreman_reports') }}" class="btn btn-outline">К отчётам прорабов</a>
+        </div>
+        <p class="card-meta">Удаление строк не удаляет “закрытие дня” целиком. Для удаления дня используйте кнопку “Удалить” в отчётах.</p>
+    </form>
+</section>
+{% endblock %}
+

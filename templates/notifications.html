@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Уведомления — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+{% if session.get('role') == 'client' %}
+<a href="{{ url_for('client_dashboard') }}" class="nav-link">Мои объекты</a>
+{% elif session.get('role') == 'manager_op' %}
+<a href="{{ url_for('manager_op_dashboard') }}" class="nav-link">Менеджер ОП</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+{% else %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    {% if session.get('role') == 'client' %}
+    <a href="{{ url_for('client_dashboard') }}">Заказчик</a> &rarr;
+    {% elif session.get('role') == 'manager_op' %}
+    <a href="{{ url_for('manager_op_dashboard') }}">Менеджер ОП</a> &rarr;
+    {% else %}
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr;
+    {% endif %}
+    <span>Уведомления</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Уведомления</h1>
+</div>
+
+{% if notifications %}
+<section class="card">
+    <ul class="notification-list">
+        {% for n in notifications %}
+        <li class="notification-item">
+            <a href="{{ url_for('notification_read', notification_id=n.id) }}" class="notification-link">
+                <strong>{{ n.title }}</strong>
+                {% if n.message %}<p class="notification-message">{{ n.message }}</p>{% endif %}
+                {% if n.project_name %}<span class="notification-project">{{ n.project_name }}</span>{% endif %}
+                <span class="notification-time">{{ n.created_at[:16] if n.created_at else '' }}</span>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% else %}
+<p class="subtitle">Нет непрочитанных уведомлений.</p>
+{% endif %}
+{% endblock %}

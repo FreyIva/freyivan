@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Вход — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div class="login-card">
+        <h1 class="login-title">Шервуд Хоум СтройКонтроль</h1>
+        <p class="login-subtitle">Строительный ERP</p>
+
+        <form method="post" action="{{ url_for('login') }}" class="login-form">
+            <div class="form-group">
+                <label for="username">Логин</label>
+                <input type="text" id="username" name="username" required autofocus
+                       placeholder="Введите логин" class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="password">Пароль</label>
+                <div class="password-field">
+                    <input type="password" id="password" name="password" required
+                           placeholder="Введите пароль" class="form-control" data-password>
+                    <button type="button" class="password-toggle" aria-label="Показать пароль" data-toggle-password>Показать</button>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Войти</button>
+        </form>
+
+        <div class="login-hint">
+            <p>Тестовые учётные записи:</p>
+            <table class="login-hint-table">
+                <thead>
+                    <tr><th>Роль</th><th>Логин</th><th>Пароль</th><th>Возможности</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="badge badge-admin">Администратор</span></td>
+                        <td><code>admin</code></td>
+                        <td><code>admin123</code></td>
+                        <td>Проекты, пользователи, этапы, заявки, чат</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-manager_op">Менеджер ОП</span></td>
+                        <td><code>manager_op</code></td>
+                        <td><code>manager123</code></td>
+                        <td>Свои проекты и календарь (созданные или назначенные ответственным)</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-director_construction">Дир. по строительству</span></td>
+                        <td colspan="2">создаётся в разделе «Пользователи»</td>
+                        <td>Принимает заявки и отчёты только от прорабов</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-director_production">Дир. по производству</span></td>
+                        <td colspan="2">создаётся в разделе «Пользователи»</td>
+                        <td>Принимает заявки только от мастеров</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-foreman">Прораб</span></td>
+                        <td colspan="2">создаётся в разделе «Пользователи»</td>
+                        <td>Как мастер: свои объекты, отчёты, заявки на редактирование, чат</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-master">Мастер</span></td>
+                        <td><code>master</code></td>
+                        <td><code>master123</code></td>
+                        <td>Свои объекты, добавление отчётов, заявки на редактирование, чат</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-worker">Работник</span></td>
+                        <td colspan="2">создаётся в разделе «Пользователи»</td>
+                        <td>Отчитывается перед мастером: видит его объекты, закрывает день (работа + % + комментарий)</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-client">Заказчик</span></td>
+                        <td><code>client</code></td>
+                        <td><code>client123</code></td>
+                        <td>Просмотр своих объектов и прогресса этапов</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

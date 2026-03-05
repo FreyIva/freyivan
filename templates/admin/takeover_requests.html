@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Заявки на проекты — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+<details class="nav-dropdown">
+    <summary class="nav-link">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+    </div>
+</details>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr;
+    <span>Заявки на проекты</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Заявки на взятие проекта</h1>
+    <p class="subtitle">Менеджеры ОП запрашивают права на проекты без активного ответственного. Одобрите или отклоните.</p>
+</div>
+
+{% if pending %}
+<section class="card">
+    <div class="users-table-wrap">
+        <table class="users-table">
+            <thead>
+                <tr><th>Проект</th><th>Кто запросил</th><th>Текущий ответственный</th><th>Дата</th><th>Действие</th></tr>
+            </thead>
+            <tbody>
+                {% for r in pending %}
+                <tr>
+                    <td><a href="{{ url_for('admin_project_stages', project_id=r.project_id) }}">{{ r.project_name }}</a></td>
+                    <td>{{ r.requester_name }}</td>
+                    <td>{{ r.current_responsible_name or '—' }}</td>
+                    <td>{{ r.created_at[:16] if r.created_at else '' }}</td>
+                    <td>
+                        <form method="post" style="display:inline;">
+                            <input type="hidden" name="action" value="approve">
+                            <input type="hidden" name="request_id" value="{{ r.id }}">
+                            <button type="submit" class="btn btn-small btn-primary">Одобрить</button>
+                        </form>
+                        <form method="post" style="display:inline;" class="takeover-reject-form">
+                            <input type="hidden" name="action" value="reject">
+                            <input type="hidden" name="request_id" value="{{ r.id }}">
+                            <input type="text" name="admin_comment" placeholder="Комментарий (необяз.)" class="form-control" style="width:180px;display:inline-block;margin:0 0.25rem;">
+                            <button type="submit" class="btn btn-small btn-danger">Отклонить</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% else %}
+<p class="subtitle">Нет заявок, ожидающих рассмотрения.</p>
+{% endif %}
+{% endblock %}

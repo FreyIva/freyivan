@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }} — Прораб — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('foreman_dashboard') }}" class="nav-link">Мои объекты</a>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('foreman_dashboard') }}">Прораб</a> &rarr;
+    <span>{{ project.name }}</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ project.name }}</h1>
+    <p class="subtitle">{{ project.address }}</p>
+    <a href="{{ url_for('foreman_project_chat', project_id=project.id) }}" class="btn btn-outline">Чат проекта</a>
+    <a href="{{ url_for('foreman_dashboard') }}" class="btn btn-outline">← К списку объектов</a>
+</div>
+
+{% if stages %}
+<section class="card">
+    <h2>Этапы проекта</h2>
+    <p class="subtitle">Плановые даты начала и окончания этапов.</p>
+    <div class="users-table-wrap">
+        <table class="users-table">
+            <thead><tr><th style="width:60px;">№</th><th>Этап</th><th style="width:140px;">Начало</th><th style="width:140px;">Окончание</th></tr></thead>
+            <tbody>
+                {% for s in stages %}
+                <tr>
+                    <td>{{ s.order_num }}</td>
+                    <td>{{ s.name }}</td>
+                    <td>{{ s.planned_start_date|dmy if s.planned_start_date else '—' }}</td>
+                    <td>{{ s.planned_end_date|dmy if s.planned_end_date else '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+
+<section class="card">
+    <h2>Закрыть рабочий день</h2>
+    <p class="subtitle">Выберите выполненные работы и укажите, какой процент закрыли за день.</p>
+    <form method="post" class="form" id="close-day-form">
+        <input type="hidden" name="action" value="close_day">
+        <div class="form-row">
+            <div class="form-group" style="max-width: 260px;">
+                <label for="report_date">Дата</label>
+                <input type="date" id="report_date" name="report_date" class="form-control" required>
+            </div>
+        </div>
+
+        <div class="users-table-wrap">
+            <table class="users-table" id="work-rows">
+                <thead>
+                    <tr><th>Работа</th><th style="width:180px;">% выполнения</th><th>Комментарий</th><th style="width:240px;">Действия</th></tr>
+                </thead>
+                <tbody>
+                    <tr class="work-row">
+                        <td>
+                            <select name="work_item_id" class="form-control work-item-select" required>
+                                <option value="">— выбрать —</option>
+                                {% for w in work_items %}
+                                <option value="{{ w.id }}" data-max="{{ w.max_percent|default(0) }}">№{{ w.code or w.id }} — {{ w.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <select name="percent" class="form-control percent-select" required>
+                                <option value="">— выбрать —</option>
+                                <option value="20">10-20</option>
+                                <option value="40">30-40</option>
+                                <option value="60">50-60</option>
+                                <option value="80">70-80</option>
+                                <option value="100">90-100</option>
+                            </select>
+                        </td>
+                        <td><input type="text" name="work_comment" class="form-control" placeholder="По желанию"></td>
+                        <td style="text-align:right;">
+                            <div style="display:flex; gap:0.5rem; justify-content:flex-end; flex-wrap:wrap;">
+                                <button type="button" class="btn btn-small btn-primary stage-confirm">Подтвердить этап</button>
+                                <button type="button" class="btn btn-small btn-outline work-remove" disabled>Убрать</button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="form-row" style="margin-top: 0.75rem;">
+            <button type="button" class="btn btn-outline" id="work-add">Добавить работу</button>
+            <button type="submit" class="btn btn-primary">Закрыть день</button>
+        </div>
+        <p class="card-meta">Если вы закрываете день повторно на ту же дату — запись будет обновлена.</p>
+    </form>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</section>
+
+{% if daily_reports %}
+<section class="card">
+    <h2>История закрытий</h2>
+    {% for dr in daily_reports %}
+    <div style="margin-bottom: 1rem;">
+        <strong>{{ dr.report_date|dmy }}</strong>
+        <div class="card-meta">{{ dr.created_at[:19] if dr.created_at else '' }}</div>
+        {% if dr.work_rows %}
+        <div class="users-table-wrap" style="margin-top: 0.5rem;">
+            <table class="users-table">
+                <thead><tr><th style="width:90px;">№</th><th>Работа</th><th style="width:120px;">%</th><th>Комментарий</th></tr></thead>
+                <tbody>
+                    {% for it in dr.work_rows %}
+                    <tr>
+                        <td><strong>{{ it.work_code or it.work_item_id }}</strong></td>
+                        <td>{{ it.work_name }}</td>
+                        <td>{{ it.percent_label or it.percent }}</td>
+                        <td>{{ it.comment or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="card-meta">Нет строк.</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function() {
+        var dateInput = document.getElementById('report_date');
+        if (dateInput && !dateInput.value) {
+            var d = new Date();
+            var mm = String(d.getMonth() + 1).padStart(2, '0');
+            var dd = String(d.getDate()).padStart(2, '0');
+            dateInput.value = d.getFullYear() + '-' + mm + '-' + dd;
+        }
+
+        var addBtn = document.getElementById('work-add');
+        var table = document.getElementById('work-rows');
+        var form = document.getElementById('close-day-form');
+        var toast = document.getElementById('toast');
+        if (!addBtn || !table) return;
+
+        function showToast(msg) {
+            if (!toast) return;
+            toast.textContent = msg;
+            toast.classList.add('show');
+            window.clearTimeout(showToast._t);
+            showToast._t = window.setTimeout(function() {
+                toast.classList.remove('show');
+            }, 2200);
+        }
+
+        function refreshPercentSelect(row) {
+            var itemSel = row.querySelector('select.work-item-select');
+            var pctSel = row.querySelector('select.percent-select');
+            if (!itemSel || !pctSel) return;
+            var opt = itemSel.options[itemSel.selectedIndex];
+            var max = opt && opt.getAttribute('data-max') ? parseFloat(opt.getAttribute('data-max')) : 0;
+            if (isNaN(max)) max = 0;
+            var allowed = 0;
+            pctSel.querySelectorAll('option').forEach(function(o) {
+                if (!o.value) return;
+                var end = parseFloat(o.value);
+                var ok = end > max;
+                o.disabled = !ok;
+                if (ok) allowed++;
+            });
+            if (pctSel.value) {
+                var chosen = parseFloat(pctSel.value);
+                if (!(chosen > max)) pctSel.value = '';
+            }
+            pctSel.disabled = allowed === 0;
+        }
+
+        function isConfirmed(row) {
+            return (row && row.getAttribute('data-confirmed') === '1');
+        }
+
+        function enforceRowState() {
+            var rows = Array.prototype.slice.call(table.querySelectorAll('tbody tr.work-row'));
+            rows.forEach(function(r, idx) {
+                var isLast = idx === rows.length - 1;
+                var itemSel = r.querySelector('select.work-item-select');
+                var pctSel = r.querySelector('select.percent-select');
+                var cmtInp = r.querySelector('input[name=\"work_comment\"]');
+                var confirmBtn = r.querySelector('button.stage-confirm');
+                var removeBtn = r.querySelector('button.work-remove');
+                var confirmed = isConfirmed(r);
+
+                r.querySelectorAll('input.locked-hidden').forEach(function(h){ h.remove(); });
+
+                if (confirmed) {
+                    if (itemSel) {
+                        itemSel.disabled = true;
+                        var hi = document.createElement('input');
+                        hi.type = 'hidden';
+                        hi.name = 'work_item_id';
+                        hi.value = itemSel.value || '';
+                        hi.className = 'locked-hidden';
+                        r.appendChild(hi);
+                    }
+                    if (pctSel) {
+                        pctSel.disabled = true;
+                        var hp = document.createElement('input');
+                        hp.type = 'hidden';
+                        hp.name = 'percent';
+                        hp.value = pctSel.value || '';
+                        hp.className = 'locked-hidden';
+                        r.appendChild(hp);
+                    }
+                    if (cmtInp) cmtInp.readOnly = true;
+                } else {
+                    if (itemSel) itemSel.disabled = false;
+                    if (cmtInp) cmtInp.readOnly = false;
+                    refreshPercentSelect(r);
+                }
+
+                if (confirmBtn) {
+                    if (confirmed) {
+                        confirmBtn.disabled = true;
+                        confirmBtn.textContent = 'Подтверждено';
+                        confirmBtn.classList.remove('btn-primary');
+                        confirmBtn.classList.add('btn-outline');
+                    } else {
+                        confirmBtn.disabled = !isLast;
+                        confirmBtn.textContent = 'Подтвердить этап';
+                        confirmBtn.classList.add('btn-primary');
+                        confirmBtn.classList.remove('btn-outline');
+                    }
+                }
+
+                if (removeBtn) {
+                    removeBtn.disabled = (rows.length === 1) || !isLast || confirmed;
+                }
+            });
+        }
+
+        table.addEventListener('change', function(e) {
+            var sel = e.target.closest('select.work-item-select');
+            if (!sel) return;
+            var row = sel.closest('tr.work-row');
+            if (!row) return;
+            refreshPercentSelect(row);
+            enforceRowState();
+        });
+
+        addBtn.addEventListener('click', function() {
+            var tbody = table.querySelector('tbody');
+            var first = tbody.querySelector('tr.work-row');
+            if (!first) return;
+            var last = tbody.querySelector('tr.work-row:last-child');
+            if (last && !isConfirmed(last)) {
+                alert('Сначала нажмите «Подтвердить этап» в последней строке.');
+                var cb = last.querySelector('button.stage-confirm');
+                if (cb && !cb.disabled) cb.focus();
+                return;
+            }
+            var clone = first.cloneNode(true);
+            clone.querySelectorAll('input').forEach(function(inp){ inp.value = ''; });
+            clone.querySelectorAll('select').forEach(function(sel){ sel.selectedIndex = 0; });
+            clone.querySelectorAll('input.locked-hidden').forEach(function(h){ h.remove(); });
+            clone.removeAttribute('data-confirmed');
+            var removeBtn = clone.querySelector('.work-remove');
+            if (removeBtn) removeBtn.disabled = false;
+            tbody.appendChild(clone);
+            enforceRowState();
+        });
+        table.addEventListener('click', function(e) {
+            var confirmBtn = e.target.closest('.stage-confirm');
+            if (confirmBtn) {
+                var row = confirmBtn.closest('tr.work-row');
+                if (!row) return;
+                var wSel = row.querySelector('select.work-item-select');
+                var pSel = row.querySelector('select.percent-select');
+                if (!wSel || !wSel.value) {
+                    alert('Сначала выберите работу.');
+                    if (wSel) wSel.focus();
+                    return;
+                }
+                if (!pSel || !pSel.value) {
+                    alert('Сначала выберите % выполнения.');
+                    if (pSel && !pSel.disabled) pSel.focus();
+                    return;
+                }
+                row.setAttribute('data-confirmed', '1');
+                enforceRowState();
+                showToast('Этап подтверждён. Можно добавлять следующую работу.');
+                return;
+            }
+            var btn = e.target.closest('.work-remove');
+            if (!btn) return;
+            var row = btn.closest('tr');
+            if (!row) return;
+            row.remove();
+            enforceRowState();
+        });
+
+        var firstRow = table.querySelector('tr.work-row');
+        if (firstRow) refreshPercentSelect(firstRow);
+        enforceRowState();
+
+        if (form) {
+            form.addEventListener('submit', function(e) {
+                var rows = Array.prototype.slice.call(table.querySelectorAll('tbody tr.work-row'));
+                var notConfirmed = rows.find(function(r){ return !isConfirmed(r); });
+                if (notConfirmed) {
+                    e.preventDefault();
+                    alert('Перед закрытием дня подтвердите этап в каждой строке кнопкой «Подтвердить этап».');
+                    var cb = notConfirmed.querySelector('button.stage-confirm');
+                    if (cb && !cb.disabled) cb.focus();
+                }
+            });
+        }
+    })();
+</script>
+{% endblock %}
+

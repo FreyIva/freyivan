@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+
+{% block title %}Проекты Sherwood Home — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+{% if current_role in ['marketer', 'rop'] %}
+    {% if can_page_amocrm_leads %}
+    <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+    {% endif %}
+    {% if can_page_amocrm_projects %}
+    <a href="{{ url_for('amocrm_projects_report') }}" class="nav-link active">Проекты Sherwood Home</a>
+    {% endif %}
+    {% if can_page_amocrm_sources %}
+    <a href="{{ url_for('amocrm_sources_report') }}" class="nav-link">Источники лидов (недели)</a>
+    {% endif %}
+{% else %}
+    <a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+    {% if can_impersonate %}
+    <a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+    {% endif %}
+    <a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+    <a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+    <a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+    <a href="{{ url_for('admin_production_report') }}" class="nav-link">Аналитика компании</a>
+    {% if can_module_reports %}
+    <details class="nav-dropdown" open>
+        <summary class="nav-link active">Отчёты</summary>
+        <div class="nav-dropdown-menu">
+            {% if can_page_worker_reports %}
+            <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+            {% endif %}
+            {% if can_page_foreman_reports %}
+            <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+            {% endif %}
+            {% if can_page_amocrm_leads %}
+            <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+            {% endif %}
+            {% if can_page_amocrm_projects %}
+            <a href="{{ url_for('amocrm_projects_report') }}" class="nav-link active">Проекты Sherwood Home</a>
+            {% endif %}
+            {% if can_page_amocrm_sources %}
+            <a href="{{ url_for('amocrm_sources_report') }}" class="nav-link">Источники лидов (недели)</a>
+            {% endif %}
+            {% if can_page_amocrm_tv %}
+            <a href="{{ url_for('amocrm_sources_dashboard') }}" class="nav-link">Единый TV дашборд</a>
+            {% endif %}
+        </div>
+    </details>
+    {% endif %}
+    {% include '_nav_spravochniki_dropdown.html' %}
+{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <span>/{{ current_role_slug or 'admin' }}/amocrm/projects</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Проекты Sherwood Home</h1>
+    <div class="display-toggle-compact" id="amocrm-projects-view-toggle" role="group" aria-label="Вид отчёта">
+        <button type="button" class="display-btn active" data-view="table" title="Таблица">Т</button>
+        <button type="button" class="display-btn" data-view="cards" title="Карточки">К</button>
+        <button type="button" class="display-btn" data-view="grouped" title="По ответственным">О</button>
+        <button type="button" class="display-btn" data-view="list" title="Сводка">С</button>
+    </div>
+</div>
+
+{% if error %}
+<section class="card">
+    <div class="flash flash-error">{{ error }}</div>
+</section>
+{% else %}
+<section class="card amocrm-leads-card">
+    <div id="amocrm-projects-responsible-totals">
+        {% set totals = summary.by_responsible_amount %}
+        {% set title = "Итоговая стоимость по ответственным" %}
+        {% include "reports/_amocrm_responsible_totals.html" %}
+    </div>
+    <div id="amocrm-projects-kpis">{% include "reports/_amocrm_projects_kpis.html" %}</div>
+
+    <form method="get" class="amocrm-filters amocrm-filters-compact" id="amocrm-projects-filters-form">
+        <div class="amocrm-filter-box">
+            <label for="contract_date">Дата заключения договора</label>
+            <select id="contract_date" name="contract_date" class="form-control">
+                <option value="">Все</option>
+                {% for v in options.contract_date %}<option value="{{ v }}" {% if selected.contract_date == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="amocrm-filter-box">
+            <label for="project_type">Проект</label>
+            <select id="project_type" name="project_type" class="form-control">
+                <option value="">Все</option>
+                {% for v in options.project_type %}<option value="{{ v }}" {% if selected.project_type == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="amocrm-filter-box">
+            <label for="prod_start">Дата начала производства</label>
+            <select id="prod_start" name="prod_start" class="form-control">
+                <option value="">Все</option>
+                {% for v in options.prod_start %}<option value="{{ v }}" {% if selected.prod_start == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="amocrm-filter-box">
+            <label for="prod_end">Дата окончания производства</label>
+            <select id="prod_end" name="prod_end" class="form-control">
+                <option value="">Все</option>
+                {% for v in options.prod_end %}<option value="{{ v }}" {% if selected.prod_end == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="amocrm-filter-box">
+            <label for="delivery_date">Дата сдачи по договору</label>
+            <select id="delivery_date" name="delivery_date" class="form-control">
+                <option value="">Все</option>
+                {% for v in options.delivery_date %}<option value="{{ v }}" {% if selected.delivery_date == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="amocrm-filter-box">
+            <label for="responsible">Ответственный</label>
+            <select id="responsible" name="responsible" class="form-control">
+                <option value="">Все</option>
+                {% for v in options.responsible %}<option value="{{ v }}" {% if selected.responsible == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="amocrm-filter-box">
+            <label for="legal_entity">ЮЛ договора</label>
+            <select id="legal_entity" name="legal_entity" class="form-control">
+                <option value="">Все</option>
+                {% for v in options.legal_entity %}<option value="{{ v }}" {% if selected.legal_entity == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="amocrm-filter-box">
+            <label for="payment_method">Способ оплаты</label>
+            <select id="payment_method" name="payment_method" class="form-control">
+                <option value="">Все</option>
+                {% for v in options.payment_method %}<option value="{{ v }}" {% if selected.payment_method == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="amocrm-filter-actions">
+            <button type="submit" class="btn btn-primary">Применить</button>
+            <a href="{{ url_for('amocrm_projects_report') }}" class="btn btn-outline">Сбросить</a>
+            <button type="button" class="btn btn-outline" id="sync-now-btn">Синхронизировать сейчас</button>
+            <button type="button" class="btn btn-outline" id="auto-sync-toggle-btn">Автообновление: ВКЛ</button>
+        </div>
+    </form>
+
+    <div class="amocrm-report-view is-active" data-view="table">
+        <div class="users-table-wrap">
+            <table class="users-table amocrm-leads-table">
+                <thead>
+                    <tr>
+                        <th>№</th>
+                        <th>Название прогнозируемого проекта</th>
+                        <th>Имя</th>
+                        <th>ЮЛ договора</th>
+                        <th>Проект</th>
+                        <th>Ответственный</th>
+                        <th>Площадь дома, м² (1 модуль = 18 м²)</th>
+                        <th>Сумма предоплаты</th>
+                        <th>Сумма постоплаты</th>
+                        <th>Допы (затраты на подрядчиков)</th>
+                        <th>Полная стоимость дома (база + допы)</th>
+                        <th>Способ оплаты</th>
+                        <th>Итоговая стоимость договора</th>
+                        <th>Дата предоплаты</th>
+                        <th>Дата начала производства</th>
+                        <th>Дата окончания производства</th>
+                        <th>Дата заключения договора</th>
+                        <th>Дата сдачи по договору</th>
+                        <th>Номер договора</th>
+                    </tr>
+                </thead>
+                <tbody id="amocrm-projects-table-body">{% include "reports/_amocrm_projects_rows.html" %}</tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="amocrm-report-view" data-view="cards">
+        <div class="amocrm-cards-grid" id="amocrm-projects-cards-body">{% include "reports/_amocrm_projects_cards.html" %}</div>
+    </div>
+
+    <div class="amocrm-report-view" data-view="grouped">
+        <div id="amocrm-projects-grouped-body">{% include "reports/_amocrm_projects_grouped.html" %}</div>
+    </div>
+
+    <div class="amocrm-report-view" data-view="list">
+        <div id="amocrm-projects-list-body">{% include "reports/_amocrm_projects_summary.html" %}</div>
+    </div>
+    <p class="card-meta" id="amocrm-updated-at">Обновлено: {{ cache_updated_at or now.strftime('%d.%m.%Y %H:%M:%S') }} (синхронизация с amoCRM каждые 60 сек)</p>
+    <p class="card-meta" id="sync-status"></p>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    var syncUrl = "{{ url_for('amocrm_projects_sync') }}";
+    var dataUrl = "{{ url_for('amocrm_projects_data') }}";
+    var statusEl = document.getElementById('sync-status');
+    var updatedAtEl = document.getElementById('amocrm-updated-at');
+    var tableBody = document.getElementById('amocrm-projects-table-body');
+    var cardsBody = document.getElementById('amocrm-projects-cards-body');
+    var groupedBody = document.getElementById('amocrm-projects-grouped-body');
+    var listBody = document.getElementById('amocrm-projects-list-body');
+    var totalsWrap = document.getElementById('amocrm-projects-responsible-totals');
+    var kpisWrap = document.getElementById('amocrm-projects-kpis');
+    var filtersForm = document.getElementById('amocrm-projects-filters-form');
+    var syncBtn = document.getElementById('sync-now-btn');
+    var autoSyncBtn = document.getElementById('auto-sync-toggle-btn');
+    var viewButtons = Array.prototype.slice.call(document.querySelectorAll('#amocrm-projects-view-toggle .display-btn'));
+    var reportViews = Array.prototype.slice.call(document.querySelectorAll('.amocrm-report-view'));
+    var statusTimer = null;
+    var autoSyncEnabled = true;
+    var syncInProgress = false;
+
+    var filterIds = ["contract_date","project_type","prod_start","prod_end","delivery_date","responsible","legal_entity","payment_method"];
+    function getEl(id){ return document.getElementById(id); }
+
+    function setView(viewName) {
+        reportViews.forEach(function (v) {
+            v.classList.toggle('is-active', v.getAttribute('data-view') === viewName);
+        });
+        viewButtons.forEach(function (b) {
+            b.classList.toggle('active', b.getAttribute('data-view') === viewName);
+        });
+        try { localStorage.setItem('amocrm_projects_view', viewName); } catch (e) {}
+    }
+
+    function getFiltersQuery() {
+        if (!filtersForm) return "";
+        var formData = new FormData(filtersForm);
+        var params = new URLSearchParams();
+        formData.forEach(function (value, key) {
+            if (String(value || "").trim()) params.append(key, value);
+        });
+        return params.toString();
+    }
+
+    function clearStatusLater(ms) {
+        if (!statusEl) return;
+        if (statusTimer) clearTimeout(statusTimer);
+        statusTimer = setTimeout(function () { statusEl.textContent = ""; statusTimer = null; }, ms || 2500);
+    }
+    function setStatus(text, autoClear) {
+        if (!statusEl) return;
+        statusEl.textContent = text || "";
+        if (autoClear) clearStatusLater(2500);
+    }
+
+    function updateSelectOptions(id, options, selectedValue) {
+        var el = getEl(id);
+        if (!el) return;
+        var html = '<option value="">Все</option>';
+        (options || []).forEach(function (v) {
+            var sel = (v === (selectedValue || "")) ? " selected" : "";
+            html += '<option value="' + String(v).replace(/"/g, '&quot;') + '"' + sel + '>' + v + '</option>';
+        });
+        el.innerHTML = html;
+    }
+
+    function refreshFromCache() {
+        var q = getFiltersQuery();
+        var url = dataUrl + (q ? ("?" + q) : "");
+        return fetch(url, { method: "GET", headers: { "X-Requested-With": "XMLHttpRequest" } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !data.ok) throw new Error("data error");
+                if (tableBody) tableBody.innerHTML = data.rows_html || "";
+                if (kpisWrap) kpisWrap.innerHTML = data.kpis_html || "";
+                if (cardsBody) cardsBody.innerHTML = data.cards_html || "";
+                if (groupedBody) groupedBody.innerHTML = data.grouped_html || "";
+                if (listBody) listBody.innerHTML = data.list_html || "";
+                if (totalsWrap) totalsWrap.innerHTML = data.totals_html || "";
+                if (updatedAtEl) updatedAtEl.textContent = "Обновлено: " + (data.cache_updated_at || "—") + " (синхронизация с amoCRM каждые 60 сек)";
+                var options = data.options || {};
+                var selected = data.selected || {};
+                filterIds.forEach(function (fid) { updateSelectOptions(fid, options[fid] || [], selected[fid] || ""); });
+            });
+    }
+
+    function doSyncAndRefresh() {
+        if (syncInProgress) return;
+        syncInProgress = true;
+        setStatus("Синхронизация с amoCRM...");
+        fetch(syncUrl, { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !data.ok) { setStatus("Ошибка синхронизации.", true); syncInProgress = false; return; }
+                refreshFromCache()
+                    .then(function () { setStatus("Синхронизировано.", true); syncInProgress = false; })
+                    .catch(function () { setStatus("Синхронизировано, но таблицу не удалось обновить.", true); syncInProgress = false; });
+            })
+            .catch(function () { setStatus("Ошибка синхронизации.", true); syncInProgress = false; });
+    }
+
+    if (syncBtn) syncBtn.addEventListener("click", doSyncAndRefresh);
+    if (autoSyncBtn) {
+        autoSyncBtn.addEventListener("click", function () {
+            autoSyncEnabled = !autoSyncEnabled;
+            autoSyncBtn.textContent = autoSyncEnabled ? "Автообновление: ВКЛ" : "Автообновление: ВЫКЛ";
+            setStatus(autoSyncEnabled ? "Автообновление включено." : "Автообновление выключено.", true);
+        });
+    }
+
+    if (viewButtons.length) {
+        viewButtons.forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                setView(btn.getAttribute('data-view'));
+            });
+        });
+        var savedView = null;
+        try { savedView = localStorage.getItem('amocrm_projects_view'); } catch (e) {}
+        setView(savedView || 'table');
+    }
+
+    setInterval(function () {
+        if (!autoSyncEnabled) return;
+        if (document.visibilityState && document.visibilityState !== "visible") return;
+        doSyncAndRefresh();
+    }, 60000);
+})();
+</script>
+{% endblock %}

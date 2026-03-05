@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}Редактировать {{ project.name }} — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+{% if session.get('role') == 'manager_op' %}
+<a href="{{ url_for('manager_op_dashboard') }}" class="nav-link">Менеджер ОП</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link active">Проекты</a>
+<a href="{{ url_for('manager_op_takeover') }}" class="nav-link">Взять проект</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+{% else %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link active">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+<details class="nav-dropdown">
+    <summary class="nav-link">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+    </div>
+</details>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    {% if session.get('role') == 'manager_op' %}
+    <a href="{{ url_for('manager_op_dashboard') }}">Менеджер ОП</a> &rarr;
+    {% else %}
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr;
+    {% endif %}
+    <a href="{{ url_for('admin_projects') }}">Проекты</a> &rarr;
+    <a href="{{ url_for('admin_project_stages', project_id=project.id) }}">{{ project.name }}</a> &rarr;
+    <span>Редактировать</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Редактировать проект</h1>
+</div>
+
+<section class="card">
+    <form method="post" action="{{ url_for('admin_project_edit', project_id=project.id) }}" enctype="multipart/form-data" class="form">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="name">Название объекта</label>
+                <input type="text" id="name" name="name" required class="form-control" value="{{ project.name }}" placeholder="Например: Дом на Ленина, 5">
+            </div>
+            <div class="form-group">
+                <label for="type">Тип строения</label>
+                <select id="type" name="type" required class="form-control">
+                    {% for key, label in building_types.items() %}
+                    <option value="{{ key }}" {% if project.type == key %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="address">Адрес</label>
+                <input type="text" id="address" name="address" required class="form-control" value="{{ project.address }}" placeholder="Полный адрес">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="client_id">Заказчик</label>
+                <select id="client_id" name="client_id" required class="form-control">
+                    {% for c in clients %}
+                    <option value="{{ c.id }}" {% if project.client_id == c.id %}selected{% endif %}>{{ c.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" id="master-foreman-group">
+                <label id="master-foreman-label" for="master_id">Мастер</label>
+                <select id="master_id" name="master_id" required class="form-control">
+                    <!-- заполняется скриптом по типу проекта -->
+                </select>
+            </div>
+            <script>
+            (function() {
+                var masters = {{ masters|tojson }};
+                var foremen = {{ foremen|tojson }};
+                var currentMasterId = {{ project.master_id|default(0)|int }};
+                var typeSelect = document.getElementById('type');
+                var labelEl = document.getElementById('master-foreman-label');
+                var selectEl = document.getElementById('master_id');
+                function isConstruction(t) {
+                    return ['frame','gasblock','penopolistirol'].indexOf(t) >= 0;
+                }
+                function refreshOptions() {
+                    var t = typeSelect.value;
+                    var list = isConstruction(t) ? foremen : masters;
+                    var label = isConstruction(t) ? 'Прораб' : 'Мастер';
+                    labelEl.textContent = label;
+                    selectEl.innerHTML = '';
+                    var found = false;
+                    for (var i = 0; i < list.length; i++) {
+                        var opt = document.createElement('option');
+                        opt.value = list[i].id;
+                        opt.textContent = list[i].full_name;
+                        if (list[i].id == currentMasterId) { opt.selected = true; found = true; }
+                        selectEl.appendChild(opt);
+                    }
+                    if (!found && list.length) selectEl.selectedIndex = 0;
+                }
+                typeSelect.addEventListener('change', refreshOptions);
+                refreshOptions();
+            })();
+            </script>
+            {% if session.get('role') != 'manager_op' and managers_op %}
+            <div class="form-group">
+                <label for="responsible_manager_id">Ответственный ОП</label>
+                <select id="responsible_manager_id" name="responsible_manager_id" required class="form-control">
+                    {% for m in managers_op %}
+                    <option value="{{ m.id }}" {% if project.responsible_manager_id == m.id %}selected{% endif %}>{{ m.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% else %}
+            <input type="hidden" name="responsible_manager_id" value="{{ project.responsible_manager_id or session.get('user_id') }}">
+            {% endif %}
+        </div>
+        {% if directors_construction %}
+        <div class="form-row" id="director-construction-row" style="{% if project.type not in ('frame', 'gasblock', 'penopolistirol') %}display:none;{% endif %}">
+            <div class="form-group">
+                <label for="director_construction_id">Директор по строительству</label>
+                <select id="director_construction_id" name="director_construction_id" class="form-control">
+                    <option value="">— не назначен —</option>
+                    {% for d in directors_construction %}
+                    <option value="{{ d.id }}" {% if project.director_construction_id == d.id %}selected{% endif %}>{{ d.full_name }}</option>
+                    {% endfor %}
+                </select>
+                <p class="card-meta">Каркас, газоблок, пенополистирол — проект виден выбранному директору по строительству.</p>
+            </div>
+        </div>
+        <script>
+        document.getElementById('type').addEventListener('change', function() {
+            var row = document.getElementById('director-construction-row');
+            row.style.display = ['frame','gasblock','penopolistirol'].indexOf(this.value) >= 0 ? '' : 'none';
+        });
+        </script>
+        {% endif %}
+        <div class="form-row">
+            <div class="form-group">
+                <label for="photo">Фото проекта (оставьте пустым, чтобы не менять)</label>
+                <input type="file" id="photo" name="photo" accept=".jpg,.jpeg,.png" class="form-control">
+                {% if project.get('photo_token') %}
+                <p class="card-meta">Текущее: <img src="{{ url_for('media_file', token=project['photo_token']) }}" alt="" style="max-height:60px;vertical-align:middle;"></p>
+                {% elif project.get('photo_path') %}
+                <p class="card-meta">Текущее: <img src="{{ url_for('static', filename=project['photo_path']) }}" alt="" style="max-height:60px;vertical-align:middle;"></p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="contract">Договор (PDF, DOC, DOCX)</label>
+                <input type="file" id="contract" name="contract" accept=".pdf,.doc,.docx" class="form-control">
+                {% if project.get('contract_token') %}
+                <p class="card-meta">
+                    Загружен. <a href="{{ url_for('media_file', token=project['contract_token']) }}" target="_blank">Скачать</a>
+                    {% if project.get('contract_confirmed_at') %}
+                    · <span class="badge badge-admin">Подтверждён заказчиком {{ project.contract_confirmed_at[:10] if project.contract_confirmed_at else '' }}</span>
+                    {% elif project.get('contract_admin_approved_at') %}
+                    · <span class="badge badge-master">Одобрен админом. Ожидает подтверждения заказчика.</span>
+                    {% elif session.get('role') == 'admin' %}
+                    · <form method="post" action="{{ url_for('admin_project_edit', project_id=project.id) }}" style="display:inline;">
+                        <input type="hidden" name="action" value="approve_contract">
+                        <button type="submit" class="btn btn-small btn-primary">Одобрить</button>
+                    </form>
+                    {% else %}
+                    · <span class="badge badge-warning">Ожидает одобрения админа</span>
+                    {% endif %}
+                </p>
+                {% else %}
+                <p class="card-meta">Не загружен. Менеджер ОП → Админ → Заказчик.</p>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="estimate">Смета (PDF, DOC, DOCX, XLS, XLSX)</label>
+                <input type="file" id="estimate" name="estimate" accept=".pdf,.doc,.docx,.xls,.xlsx" class="form-control">
+                {% if project.get('estimate_token') %}
+                <p class="card-meta">
+                    Загружена. <a href="{{ url_for('media_file', token=project['estimate_token']) }}" target="_blank">Скачать</a>
+                    {% if project.get('estimate_confirmed_at') %}
+                    · <span class="badge badge-admin">Подтверждена заказчиком {{ project.estimate_confirmed_at[:10] if project.estimate_confirmed_at else '' }}</span>
+                    {% elif project.get('estimate_admin_approved_at') %}
+                    · <span class="badge badge-master">Одобрена админом. Ожидает подтверждения заказчика.</span>
+                    {% elif session.get('role') == 'admin' %}
+                    · <form method="post" action="{{ url_for('admin_project_edit', project_id=project.id) }}" style="display:inline;">
+                        <input type="hidden" name="action" value="approve_estimate">
+                        <button type="submit" class="btn btn-small btn-primary">Одобрить</button>
+                    </form>
+                    {% else %}
+                    · <span class="badge badge-warning">Ожидает одобрения админа</span>
+                    {% endif %}
+                </p>
+                {% else %}
+                <p class="card-meta">Не загружена. Менеджер ОП → Админ → Заказчик.</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="form-row">
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <a href="{{ url_for('admin_projects') }}" class="btn btn-outline">Отмена</a>
+        </div>
+    </form>
+</section>
+
+<a href="{{ url_for('admin_project_stages', project_id=project.id) }}" class="btn btn-outline">← К этапам проекта</a>
+{% endblock %}

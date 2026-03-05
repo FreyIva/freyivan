@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}Админ-панель — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<a href="{{ url_for('admin_users') }}" class="nav-link">Пользователи</a>
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+<a href="{{ url_for('admin_production_report') }}" class="nav-link">Аналитика компании</a>
+<details class="nav-dropdown">
+    <summary class="nav-link">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+        <a href="{{ url_for('amocrm_projects_report') }}" class="nav-link">Проекты Sherwood Home</a>
+        <a href="{{ url_for('amocrm_sources_report') }}" class="nav-link">Источники лидов (недели)</a>
+        <a href="{{ url_for('amocrm_sources_dashboard') }}" class="nav-link">Единый TV дашборд</a>
+    </div>
+</details>
+{% include '_nav_spravochniki_dropdown.html' %}
+<details class="nav-dropdown">
+    <summary class="nav-link">amoCRM</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('admin_amocrm_settings') }}" class="nav-link">Настройки</a>
+    </div>
+</details>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Панель администратора</h1>
+</div>
+
+<div class="dashboard-grid">
+    <section class="card">
+        <h2>Проекты</h2>
+        <a href="{{ url_for('admin_projects') }}" class="btn btn-primary">Управление проектами</a>
+        <p class="card-meta">Всего: {{ projects|length }}</p>
+    </section>
+
+    <section class="card">
+        <h2>Пользователи</h2>
+        <a href="{{ url_for('admin_users') }}" class="btn btn-primary">Управление пользователями</a>
+        <p class="card-meta">Всего: {{ users|length }}</p>
+    </section>
+
+    <section class="card">
+        <h2>Аналитика компании</h2>
+        <a href="{{ url_for('admin_production_report') }}" class="btn btn-primary">Аналитика компании</a>
+        <p class="card-meta">Соблюдение сроков, эффективность</p>
+    </section>
+
+    <section class="card">
+        <h2>amoCRM</h2>
+        <a href="{{ url_for('admin_amocrm_settings') }}" class="btn btn-primary">Настройки интеграции</a>
+        <p class="card-meta">Отчёт по сделкам</p>
+    </section>
+</div>
+
+<section class="card">
+    <div class="card-header-row">
+        <h2 style="margin: 0;">Последние проекты</h2>
+        <div class="display-toggle-compact" id="dashboard-display-toggle" role="group" aria-label="Стиль отображения">
+            <button type="button" class="display-btn {% if recent_display == '1' %}active{% endif %}" data-display="1" title="Карточки">1</button>
+            <button type="button" class="display-btn {% if recent_display == '2' %}active{% endif %}" data-display="2" title="Таблица">2</button>
+            <button type="button" class="display-btn {% if recent_display == '3' %}active{% endif %}" data-display="3" title="Ленточки">3</button>
+            <button type="button" class="display-btn {% if recent_display == '4' %}active{% endif %}" data-display="4" title="Сетка">4</button>
+        </div>
+    </div>
+    {% if projects %}
+    {% set recent = projects %}
+    <div id="dashboard-recent-views" data-active="{{ recent_display }}">
+    {# Вариант 1: Карточки мини #}
+    <div class="dashboard-recent-view" data-view="1" style="{% if recent_display != '1' %}display:none;{% endif %}">
+    <div class="project-list dashboard-recent-cards">
+        {% for p in recent %}
+        <a href="{{ url_for('admin_project_stages', project_id=p.id) }}" class="project-card-mini project-card-with-photo">
+            {% if p.get('edit_requests_count', 0) %}<span class="project-badge" title="Заявки на редактирование">{{ p.edit_requests_count }}</span>{% endif %}
+            {% if p.get('photo_token') %}
+            <div class="project-card-photo project-card-photo-mini"><img src="{{ url_for('media_file', token=p['photo_token']) }}" alt="{{ p.name }}"></div>
+            {% elif p.get('photo_path') %}
+            <div class="project-card-photo project-card-photo-mini"><img src="{{ url_for('static', filename=p['photo_path']) }}" alt="{{ p.name }}"></div>
+            {% endif %}
+            <span class="project-name">{{ p.name }}</span>
+            <span class="project-address">{{ p.address }}</span>
+            <span class="project-type">{{ building_types.get(p.type, p.type) }}</span>
+        </a>
+        {% endfor %}
+    </div>
+    </div>
+    {# Вариант 2: Таблица #}
+    <div class="dashboard-recent-view" data-view="2" style="{% if recent_display != '2' %}display:none;{% endif %}">
+    <div class="users-table-wrap">
+        <table class="admin-projects-table">
+            <thead><tr><th>Превью</th><th>Объект</th><th>Тип</th><th>Адрес</th></tr></thead>
+            <tbody>
+                {% for p in recent %}
+                <tr>
+                    <td>
+                        {% if p.get('photo_token') %}
+                            <img src="{{ url_for('media_file', token=p['photo_token']) }}" class="admin-projects-thumb" alt="">
+                        {% elif p.get('photo_path') %}
+                            <img src="{{ url_for('static', filename=p['photo_path']) }}" class="admin-projects-thumb" alt="">
+                        {% else %}
+                            <span class="admin-projects-thumb admin-projects-thumb-placeholder"></span>
+                        {% endif %}
+                    </td>
+                    <td><a href="{{ url_for('admin_project_stages', project_id=p.id) }}"><strong>{{ p.name }}</strong>{% if p.get('edit_requests_count', 0) %} <span class="project-badge">{{ p.edit_requests_count }}</span>{% endif %}</a></td>
+                    <td>{{ building_types.get(p.type, p.type) }}</td>
+                    <td>{{ p.address }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    </div>
+    {# Вариант 3: Ленточки (компактные строки) #}
+    <div class="dashboard-recent-view" data-view="3" style="{% if recent_display != '3' %}display:none;{% endif %}">
+    <div class="dashboard-recent-rows">
+        {% for p in recent %}
+        <a href="{{ url_for('admin_project_stages', project_id=p.id) }}" class="admin-project-row">
+            {% if p.get('photo_token') %}
+            <div class="admin-project-row-thumb"><img src="{{ url_for('media_file', token=p['photo_token']) }}" alt=""></div>
+            {% elif p.get('photo_path') %}
+            <div class="admin-project-row-thumb"><img src="{{ url_for('static', filename=p['photo_path']) }}" alt=""></div>
+            {% else %}<div class="admin-project-row-thumb admin-project-row-thumb-placeholder">Фото</div>{% endif %}
+            <div class="admin-project-row-body">
+                <span class="project-name">{{ p.name }}</span>{% if p.get('edit_requests_count', 0) %} <span class="project-badge">{{ p.edit_requests_count }}</span>{% endif %} · <span class="project-type">{{ building_types.get(p.type, p.type) }}</span>
+                <p class="admin-project-row-meta">{{ p.address }} · Заказчик: {{ p.client_name }} · Мастер: {{ p.master_name }}</p>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    </div>
+    {# Вариант 4: Плотная сетка #}
+    <div class="dashboard-recent-view" data-view="4" style="{% if recent_display != '4' %}display:none;{% endif %}">
+    <div class="project-grid admin-projects-dense dashboard-recent-dense">
+        {% for p in recent %}
+        <a href="{{ url_for('admin_project_stages', project_id=p.id) }}" class="project-card project-card-link admin-project-dense project-card-with-photo">
+            {% if p.get('edit_requests_count', 0) %}<span class="project-badge project-badge-corner">{{ p.edit_requests_count }}</span>{% endif %}
+            {% if p.get('photo_token') %}
+                <div class="project-card-photo"><img src="{{ url_for('media_file', token=p['photo_token']) }}" alt=""></div>
+            {% elif p.get('photo_path') %}
+                <div class="project-card-photo"><img src="{{ url_for('static', filename=p['photo_path']) }}" alt=""></div>
+            {% else %}
+                <div class="project-card-photo project-card-photo-placeholder"></div>
+            {% endif %}
+            <span class="project-name">{{ p.name }}</span>
+        </a>
+        {% endfor %}
+    </div>
+    </div>
+    </div>
+    {% else %}
+    <p>Проектов пока нет. <a href="{{ url_for('admin_projects') }}">Создать первый проект</a>.</p>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    var toggle = document.getElementById('dashboard-display-toggle');
+    var views = document.getElementById('dashboard-recent-views');
+    if (!toggle || !views) return;
+    var viewEls = views.querySelectorAll('.dashboard-recent-view');
+    var btns = toggle.querySelectorAll('.display-btn');
+    function switchView(display) {
+        viewEls.forEach(function(el) {
+            el.style.display = el.getAttribute('data-view') === display ? '' : 'none';
+        });
+        btns.forEach(function(btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-display') === display);
+        });
+        views.setAttribute('data-active', display);
+        fetch('{{ url_for("admin_dashboard_pref") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+            body: 'recent_display=' + encodeURIComponent(display)
+        }).catch(function() {});
+    }
+    btns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var d = this.getAttribute('data-display');
+            if (d) switchView(d);
+        });
+    });
+})();
+</script>
+{% endblock %}

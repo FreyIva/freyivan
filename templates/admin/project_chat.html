@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Чат — {{ project.name }} — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% if can_impersonate %}
+<a href="{{ url_for('admin_roles') }}" class="nav-link">Связи ролей</a>
+{% endif %}
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+<details class="nav-dropdown">
+    <summary class="nav-link">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+        <a href="{{ url_for('amocrm_leads_report') }}" class="nav-link">Потенциальные клиенты</a>
+    </div>
+</details>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    {% if session.get('role') == 'manager_op' %}
+    <a href="{{ url_for('manager_op_dashboard') }}">Менеджер ОП</a> &rarr;
+    {% else %}
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr;
+    {% endif %}
+    <a href="{{ url_for('admin_projects') }}">Проекты</a> &rarr;
+    <a href="{{ url_for('admin_project_stages', project_id=project.id) }}">{{ project.name }}</a> &rarr;
+    <span>Чат</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Чат проекта: {{ project.name }}</h1>
+    <p class="subtitle">{{ building_types.get(project.type, project.type) }} — общение с мастером</p>
+    <a href="{{ url_for('admin_project_edit', project_id=project.id) }}" class="btn btn-outline">Редактировать проект</a>
+    <form method="post" action="{{ url_for('admin_project_delete', project_id=project.id) }}" style="display:inline;" onsubmit="return confirm('Удалить проект и все его этапы?');">
+        <button type="submit" class="btn btn-danger">Удалить проект</button>
+    </form>
+</div>
+
+<div class="chat-container card">
+    <div class="chat-messages">
+        {% for m in messages %}
+        <div class="chat-message chat-msg-{{ m.msg_type or 'chat' }}">
+            <div class="chat-message-header">
+                <strong>{{ m.author_name }}</strong>
+                <span class="chat-message-time">{{ m.created_at[:16] if m.created_at else '' }}</span>
+                {% if m.msg_type == 'edit_request' %}
+                <span class="chat-msg-label chat-msg-request">Заявка на редактирование</span>
+                {% elif m.msg_type == 'edit_approval' %}
+                <span class="chat-msg-label chat-msg-approval">По заявке на одобрение</span>
+                {% elif m.msg_type == 'edit_reject' %}
+                <span class="chat-msg-label chat-msg-reject">По заявке на отмену</span>
+                {% endif %}
+                {% if m.stage_id and m.stage_name %}
+                <span class="chat-msg-stage">Этап: {{ m.stage_name }}</span>
+                {% endif %}
+            </div>
+            <div class="chat-message-body">{{ m.message }}</div>
+        </div>
+        {% else %}
+        <p class="chat-empty">Пока нет сообщений.</p>
+        {% endfor %}
+    </div>
+    <form method="post" class="chat-form">
+        <div class="chat-form-row">
+            <select name="stage_id" class="form-control chat-stage-select">
+                <option value="">Общее сообщение</option>
+                {% for st in stages %}
+                <option value="{{ st.id }}">По этапу: {{ st.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="chat-form-row">
+            <textarea name="message" rows="2" placeholder="Сообщение для мастера..." class="form-control" required></textarea>
+            <button type="submit" class="btn btn-primary">Отправить</button>
+        </div>
+    </form>
+</div>
+
+<a href="{{ url_for('admin_project_stages', project_id=project.id) }}" class="btn btn-outline back-link">← К этапам проекта</a>
+{% endblock %}

@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }} — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+<a href="{{ url_for('client_dashboard') }}" class="nav-link">Мои объекты</a>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    <a href="{{ url_for('client_dashboard') }}">Заказчик</a> &rarr;
+    <span>{{ project.name }}</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header project-header">
+    <h1>{{ project.name }}</h1>
+    <p class="subtitle">{{ building_types.get(project.type, project.type) }} — {{ project.address }}</p>
+</div>
+
+<div class="progress-section">
+    <h2>Прогресс строительства</h2>
+    <div class="progress-bar-wrap">
+        <div class="progress-bar" style="width: {{ progress_pct }}%"></div>
+        <span class="progress-text">{{ completed }} из {{ total }} этапов выполнено</span>
+    </div>
+</div>
+
+{% if project.get('contract_token') or project.get('estimate_token') %}
+<section class="card" style="margin-bottom: 1.5rem;">
+    <h2>Документы</h2>
+    <div class="form-row" style="flex-wrap: wrap; gap: 1rem;">
+        {% if project.get('contract_token') %}
+        <div class="form-group">
+            <strong>Договор</strong>
+            {% if project.get('contract_confirmed_at') %}
+            <span class="badge badge-admin">Подтверждён {{ project.contract_confirmed_at[:10] if project.contract_confirmed_at else '' }}</span>
+            {% elif project.get('contract_admin_approved_at') %}
+            <a href="{{ url_for('media_file', token=project['contract_token']) }}" target="_blank" class="btn btn-small btn-outline">Скачать</a>
+            <form method="post" action="{{ url_for('client_project', project_id=project.id) }}" style="display:inline;">
+                <input type="hidden" name="action" value="confirm_contract">
+                <button type="submit" class="btn btn-small btn-primary">Подтвердить</button>
+            </form>
+            {% else %}
+            <a href="{{ url_for('media_file', token=project['contract_token']) }}" target="_blank" class="btn btn-small btn-outline">Скачать</a>
+            <span class="badge badge-warning">Ожидает одобрения администратором</span>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% if project.get('estimate_token') %}
+        <div class="form-group">
+            <strong>Смета</strong>
+            {% if project.get('estimate_confirmed_at') %}
+            <span class="badge badge-admin">Подтверждена {{ project.estimate_confirmed_at[:10] if project.estimate_confirmed_at else '' }}</span>
+            {% elif project.get('estimate_admin_approved_at') %}
+            <a href="{{ url_for('media_file', token=project['estimate_token']) }}" target="_blank" class="btn btn-small btn-outline">Скачать</a>
+            <form method="post" action="{{ url_for('client_project', project_id=project.id) }}" style="display:inline;">
+                <input type="hidden" name="action" value="confirm_estimate">
+                <button type="submit" class="btn btn-small btn-primary">Подтвердить</button>
+            </form>
+            {% else %}
+            <a href="{{ url_for('media_file', token=project['estimate_token']) }}" target="_blank" class="btn btn-small btn-outline">Скачать</a>
+            <span class="badge badge-warning">Ожидает одобрения администратором</span>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endif %}
+
+<div class="stages-section client-stages">
+    <h2>Этапы</h2>
+    {% for s in stages %}
+    <div class="stage-card {% if s.reports %}stage-done{% else %}stage-pending{% endif %}">
+        <div class="stage-card-header">
+            <span class="stage-status-icon">
+                {% if s.reports %}✅{% else %}⏳{% endif %}
+            </span>
+            <span class="stage-name">{{ s.name }}</span>
+            <span class="stage-status-label">
+                {% if s.reports %}ГОТОВО{% else %}В РАБОТЕ{% endif %}
+            </span>
+        </div>
+
+        {% if s.reports %}
+        <div class="stage-gallery">
+            <p class="gallery-title">Фото и комментарии мастера:</p>
+            <div class="photo-carousel-wrap">
+                <div class="photo-carousel stage-photo-carousel">
+                    {% for r in s.reports %}
+                    <div class="photo-carousel-slide">
+                        {% if r.get('photo_token') %}
+                        <a href="{{ url_for('media_file', token=r['photo_token']) }}" class="photo-carousel-item photo-open-full" data-fullscreen>
+                            <img src="{{ url_for('media_file', token=r['photo_token']) }}" alt="Фото этапа">
+                        {% else %}
+                        <a href="{{ url_for('static', filename=r['photo_path']) }}" class="photo-carousel-item photo-open-full" data-fullscreen>
+                            <img src="{{ url_for('static', filename=r['photo_path']) }}" alt="Фото этапа">
+                        {% endif %}
+                        </a>
+                        {% if r.get('comment') %}<p class="gallery-comment">{{ r['comment'] }}</p>{% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% if s.reports|length > 1 %}
+                <p class="photo-carousel-hint">← пролистайте для просмотра →</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Модальное окно для просмотра фото на весь экран -->
+<div id="lightbox" class="lightbox">
+    <span class="lightbox-close">&times;</span>
+    <img src="" alt="Фото" class="lightbox-img">
+</div>
+
+<a href="{{ url_for('client_dashboard') }}" class="btn btn-outline back-link">← К списку объектов</a>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/client.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,30 @@
+{% for r in rows %}
+<article class="amocrm-lead-card">
+    <header class="amocrm-lead-card-head">
+        <span class="amocrm-lead-title">
+            {% if r.project_name != 'null' %}
+            <a href="https://sherwoodhome.amocrm.ru/leads/detail/{{ r.lead_id }}" target="_blank" rel="noopener">{{ r.project_name }}</a>
+            {% else %}
+            <span class="td-null">{{ r.project_name }}</span>
+            {% endif %}
+        </span>
+        <span class="amocrm-lead-price">{{ r.contract_total }}</span>
+    </header>
+    <div class="amocrm-lead-meta">
+        <span class="{% if r.client_name == 'null' %}td-null{% endif %}"><strong>Имя:</strong> {{ r.client_name }}</span>
+        <span class="{% if r.legal_entity == 'null' %}td-null{% endif %}"><strong>ЮЛ:</strong> {{ r.legal_entity }}</span>
+        <span class="{% if r.project_type == 'null' %}td-null{% endif %}"><strong>Проект:</strong> {{ r.project_type }}</span>
+        <span class="{% if r.responsible == 'null' %}td-null{% endif %}"><strong>Ответственный:</strong> {{ r.responsible }}</span>
+        <span class="{% if r.area_sqm == 'null' %}td-null{% endif %}"><strong>Площадь, м²:</strong> {{ r.area_sqm }}</span>
+        <span class="{% if r.prepay == 'null' %}td-null{% endif %}"><strong>Предоплата:</strong> {{ r.prepay }}</span>
+        <span class="{% if r.postpay == 'null' %}td-null{% endif %}"><strong>Постоплата:</strong> {{ r.postpay }}</span>
+        <span class="{% if r.extras == 'null' %}td-null{% endif %}"><strong>Допы:</strong> {{ r.extras }}</span>
+        <span class="{% if r.full_cost == 'null' %}td-null{% endif %}"><strong>Полная стоимость:</strong> {{ r.full_cost }}</span>
+        <span class="{% if r.payment_method == 'null' %}td-null{% endif %}"><strong>Оплата:</strong> {{ r.payment_method }}</span>
+        <span class="{% if r.contract_number == 'null' %}td-null{% endif %}"><strong>Договор:</strong> {{ r.contract_number }}</span>
+        <span class="{% if r.contract_date == 'null' %}td-null{% endif %}"><strong>Дата договора:</strong> {{ r.contract_date }}</span>
+    </div>
+</article>
+{% else %}
+<p class="card-meta">Нет данных</p>
+{% endfor %}

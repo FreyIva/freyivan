@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Единый TV дашборд</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { color-scheme: dark; }
+        body { margin: 0; font-family: Inter, Arial, sans-serif; background: #0b1220; color: #e5e7eb; }
+        .wrap { padding: 12px 16px; }
+        .top { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        .title { font-size: 22px; font-weight: 800; }
+        .ctrl { display: flex; gap: 8px; align-items: center; }
+        .ctrl select, .ctrl button { background: #172036; color: #e5e7eb; border: 1px solid #2a3755; border-radius: 8px; padding: 8px 10px; }
+        .year-toggle-btn {
+            width: 40px;
+            min-width: 40px;
+            padding: 8px 0;
+            font-size: 18px;
+            line-height: 1;
+            text-align: center;
+            cursor: pointer;
+        }
+        .year-toggle-btn.is-on {
+            border-color: #22c55e;
+            color: #22c55e;
+            box-shadow: 0 0 0 1px rgba(34,197,94,.2) inset;
+        }
+        .year-toggle-btn.is-off {
+            border-color: #ef4444;
+            color: #ef4444;
+            opacity: .85;
+        }
+        #year:disabled {
+            opacity: .55;
+            cursor: not-allowed;
+        }
+        .kpis { display: grid; grid-template-columns: repeat(10, minmax(130px, 1fr)); gap: 10px; margin-bottom: 10px; }
+        .kpi { background: #111a2d; border: 1px solid #2a3755; border-radius: 10px; padding: 10px; }
+        .kpi .l { color: #9ca3af; font-size: 12px; }
+        .kpi .v { margin-top: 4px; font-size: 20px; font-weight: 800; }
+        .grid { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 10px; }
+        .card { background: #111a2d; border: 1px solid #2a3755; border-radius: 10px; padding: 10px; }
+        .card h3 { margin: 0 0 8px 0; font-size: 14px; color: #cbd5e1; }
+        .grid2 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 10px; }
+        canvas { width: 100% !important; height: 285px !important; }
+        .muted { color: #9ca3af; font-size: 12px; margin-top: 8px; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="top">
+        <div class="title">Единый TV дашборд: Маркетинг + Продажи</div>
+        <div class="ctrl">
+            <label for="year">Год</label>
+            <select id="year"></select>
+            <button id="year-filter-toggle" class="year-toggle-btn is-on" type="button" title="Фильтр по году: ВКЛ" aria-label="Переключить фильтр по году">&#x23FB;</button>
+            <button id="sync-now">Синхронизировать</button>
+            <button id="auto-toggle">Автообновление: ВКЛ</button>
+        </div>
+    </div>
+    <div id="err" class="card" style="display:none;"></div>
+
+    <div class="kpis">
+        <div class="kpi"><div class="l">Маркетинг: лиды</div><div class="v" id="kpi-m-leads">0</div></div>
+        <div class="kpi"><div class="l">Маркетинг: квалы</div><div class="v" id="kpi-m-quals">0</div></div>
+        <div class="kpi"><div class="l">Маркетинг: % квалов</div><div class="v" id="kpi-m-qrate">0%</div></div>
+        <div class="kpi"><div class="l">Маркетинг: бюджет факт/план</div><div class="v" id="kpi-m-budget">0 / 0</div></div>
+        <div class="kpi"><div class="l">Маркетинг: CPL факт</div><div class="v" id="kpi-m-cpl">0</div></div>
+        <div class="kpi"><div class="l">Продажи: площадь факт, м²</div><div class="v" id="kpi-s-count">0</div></div>
+        <div class="kpi"><div class="l">Продажи: сумма</div><div class="v" id="kpi-s-amount">0</div></div>
+        <div class="kpi"><div class="l">План (будущие): площадь, м²</div><div class="v" id="kpi-s-plan-count">0</div></div>
+        <div class="kpi"><div class="l">План (будущие): сумма</div><div class="v" id="kpi-s-plan-amount">0</div></div>
+        <div class="kpi"><div class="l">Средняя цена за м²</div><div class="v" id="kpi-s-avg">0</div></div>
+    </div>
+
+    <div class="grid">
+        <div class="card">
+            <h3>Маркетинг: лиды и квалы по месяцам</h3>
+            <canvas id="line-marketing"></canvas>
+        </div>
+        <div class="card">
+            <h3>Маркетинг: доли источников</h3>
+            <canvas id="pie-sources"></canvas>
+        </div>
+        <div class="card">
+            <h3>Продажи: структура оплат</h3>
+            <canvas id="pie-payments"></canvas>
+        </div>
+    </div>
+
+    <div class="grid2">
+        <div class="card">
+            <h3>Маркетинг: источники по месяцам (топ-6)</h3>
+            <canvas id="bar-sources"></canvas>
+        </div>
+        <div class="card">
+            <h3>Продажи: сумма по месяцам</h3>
+            <canvas id="line-sales-amount"></canvas>
+        </div>
+        <div class="card">
+            <h3>Продажи: факт/план площади по месяцам (м²)</h3>
+            <canvas id="bar-sales-count"></canvas>
+        </div>
+        <div class="card">
+            <h3>План/факт площади по категориям (м²)</h3>
+            <canvas id="bar-modules-cats"></canvas>
+        </div>
+    </div>
+
+    <div class="muted">Обновлено: <span id="updated-at">{{ cache_updated_at or '—' }}</span> · Полноэкранный режим без шапки</div>
+</div>
+
+<script>
+(function () {
+    var dataUrl = "{{ url_for('amocrm_sources_dashboard_data') }}";
+    var syncUrl = "{{ url_for('amocrm_sources_dashboard_sync') }}";
+    var payload = {{ payload_json|safe }};
+    var yearSel = document.getElementById('year');
+    var yearToggleBtn = document.getElementById('year-filter-toggle');
+    var errEl = document.getElementById('err');
+    var updatedEl = document.getElementById('updated-at');
+    var autoBtn = document.getElementById('auto-toggle');
+    var syncBtn = document.getElementById('sync-now');
+    var autoEnabled = true;
+    var yearFilterEnabled = true;
+    var charts = {};
+    var colors = ['#60a5fa','#34d399','#f59e0b','#f472b6','#a78bfa','#f97316','#22d3ee','#eab308','#fb7185','#4ade80','#2dd4bf','#f43f5e','#8b5cf6'];
+    var chartShadowPlugin = {
+        id: 'chartShadowPlugin',
+        beforeDatasetsDraw: function(chart) {
+            var ctx = chart.ctx;
+            ctx.save();
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+            ctx.shadowBlur = 14;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 6;
+        },
+        afterDatasetsDraw: function(chart) {
+            chart.ctx.restore();
+        }
+    };
+    Chart.register(chartShadowPlugin);
+
+    function fmtInt(v){ return (v||0).toLocaleString('ru-RU'); }
+    function fmtPct(v){ return (v||0).toFixed(1).replace('.', ',') + '%'; }
+    function fmtMoney(v){ return (v||0).toLocaleString('ru-RU', {maximumFractionDigits:0}); }
+    function makeGradient(canvas, topColor, bottomColor) {
+        if (!canvas) return topColor;
+        var ctx = canvas.getContext('2d');
+        var h = canvas.clientHeight || 285;
+        var g = ctx.createLinearGradient(0, 0, 0, h);
+        g.addColorStop(0, topColor);
+        g.addColorStop(1, bottomColor);
+        return g;
+    }
+    function baseAnim(duration, easing) {
+        return {
+            duration: duration || 1300,
+            easing: easing || 'easeOutQuart'
+        };
+    }
+    function animLine() { return baseAnim(3100, 'easeOutCubic'); }
+    function animBar() { return baseAnim(2400, 'easeOutQuart'); }
+    function animPie() { return baseAnim(1800, 'easeOutBack'); }
+
+    function getYear() {
+        if (!yearFilterEnabled) return null;
+        var y = parseInt(yearSel.value || '', 10);
+        return isNaN(y) ? null : y;
+    }
+
+    function applyYearFilterUi() {
+        if (!yearToggleBtn || !yearSel) return;
+        yearSel.disabled = !yearFilterEnabled;
+        yearToggleBtn.classList.toggle('is-on', yearFilterEnabled);
+        yearToggleBtn.classList.toggle('is-off', !yearFilterEnabled);
+        yearToggleBtn.title = yearFilterEnabled ? 'Фильтр по году: ВКЛ' : 'Фильтр по году: ВЫКЛ';
+        yearToggleBtn.setAttribute('aria-label', yearFilterEnabled ? 'Выключить фильтр по году' : 'Включить фильтр по году');
+    }
+
+    function dataForYear(y) {
+        var mm = (payload.months || []).filter(function(m){ return !y || m.year === y; });
+        var sm = (payload.sales_months || []).filter(function(m){ return !y || m.year === y; });
+        var srcTotals = {};
+        (payload.sources || []).forEach(function(s){ srcTotals[s] = {leads:0, qual:0}; });
+        var mLeads=0, mQuals=0, mBudget=0, mPlanBudget=0, mPlanLeads=0, mPlanQual=0;
+        mm.forEach(function(m){
+            mLeads += (m.leads || 0);
+            mQuals += (m.qual || 0);
+            mBudget += (m.fact_budget || 0);
+            mPlanBudget += (m.plan_budget || 0);
+            mPlanLeads += (m.plan_leads || 0);
+            mPlanQual += (m.plan_qual_leads || 0);
+            Object.keys(m.by_source || {}).forEach(function(s){
+                srcTotals[s].leads += ((m.by_source[s]||{}).leads || 0);
+                srcTotals[s].qual += ((m.by_source[s]||{}).qual || 0);
+            });
+        });
+        var sCount=0, sAmount=0, sArea=0, sPlanCount=0, sPlanArea=0, sPlanAmount=0;
+        sm.forEach(function(m){
+            sCount += (m.sold_count || 0);
+            sAmount += (m.sold_amount || 0);
+            sArea  += (m.sold_area || 0);
+            sPlanCount += (m.plan_count || 0);
+            sPlanArea += (m.plan_area || 0);
+            sPlanAmount += (m.plan_amount || 0);
+        });
+        var modulesYear = (payload.modules_yearly || []).find(function(row){ return row.year === (y || new Date().getFullYear()); }) || null;
+        if (!modulesYear && (payload.modules_yearly || []).length) modulesYear = payload.modules_yearly[0];
+        return {
+            mm:mm, sm:sm, srcTotals:srcTotals,
+            mLeads:mLeads, mQuals:mQuals, mBudget:mBudget,
+            mPlanBudget:mPlanBudget, mPlanLeads:mPlanLeads, mPlanQual:mPlanQual,
+            sCount:sCount, sAmount:sAmount, sArea:sArea, sPlanCount:sPlanCount, sPlanArea:sPlanArea, sPlanAmount:sPlanAmount,
+            modulesYear: modulesYear
+        };
+    }
+
+    function fillYears() {
+        var years = payload.years || [];
+        var cur = new Date().getFullYear();
+        var prevSelected = yearSel && yearSel.value ? String(yearSel.value) : '';
+        var html = '<option value="">Все годы</option>' + years.map(function(y){
+            var ys = String(y);
+            var isSel = prevSelected ? (prevSelected === ys) : (y === cur);
+            return '<option value="'+y+'"'+(isSel ? ' selected':'')+'>'+y+'</option>';
+        }).join('');
+        yearSel.innerHTML = html;
+        if (!prevSelected && years.indexOf(cur) === -1 && years.length) {
+            yearSel.value = String(years[0]);
+        }
+    }
+
+    function cycleYearForward() {
+        if (!yearSel || !yearFilterEnabled) return;
+        var vals = Array.prototype.slice.call(yearSel.options || [])
+            .map(function(o){ return String(o.value || ''); })
+            .filter(function(v){ return v !== ''; });
+        if (!vals.length) return;
+        var curVal = String(yearSel.value || '');
+        var idx = vals.indexOf(curVal);
+        var nextVal = (idx < 0) ? vals[0] : vals[(idx + 1) % vals.length];
+        yearSel.value = nextVal;
+        render();
+    }
+
+    function render() {
+        var d = dataForYear(getYear());
+        var mRate = d.mLeads ? (d.mQuals * 100.0 / d.mLeads) : 0;
+        var mCpl = d.mLeads ? (d.mBudget / d.mLeads) : 0;
+        var sAvg = d.sArea ? (d.sAmount / d.sArea) : 0;
+
+        document.getElementById('kpi-m-leads').textContent = fmtInt(d.mLeads);
+        document.getElementById('kpi-m-quals').textContent = fmtInt(d.mQuals);
+        document.getElementById('kpi-m-qrate').textContent = fmtPct(mRate);
+        document.getElementById('kpi-m-budget').textContent = fmtMoney(d.mBudget) + ' / ' + fmtMoney(d.mPlanBudget);
+        document.getElementById('kpi-m-cpl').textContent = fmtMoney(mCpl);
+        document.getElementById('kpi-s-count').textContent = fmtInt(d.sArea);
+        document.getElementById('kpi-s-amount').textContent = fmtMoney(d.sAmount);
+        document.getElementById('kpi-s-plan-count').textContent = fmtInt(d.sPlanArea);
+        document.getElementById('kpi-s-plan-amount').textContent = fmtMoney(d.sPlanAmount);
+        document.getElementById('kpi-s-avg').textContent = fmtMoney(sAvg);
+
+        var mLabels = d.mm.map(function(m){ return m.label; });
+        var marketingCanvas = document.getElementById('line-marketing');
+        var marketingLeadBg = makeGradient(marketingCanvas, 'rgba(96,165,250,0.42)', 'rgba(96,165,250,0.02)');
+        var marketingQualBg = makeGradient(marketingCanvas, 'rgba(52,211,153,0.42)', 'rgba(52,211,153,0.02)');
+        var lineMarketingData = {
+            labels: mLabels,
+            datasets: [
+                {
+                    label:'Лиды',
+                    data: d.mm.map(function(m){ return m.leads || 0; }),
+                    borderColor:'#60a5fa',
+                    backgroundColor: marketingLeadBg,
+                    pointRadius: 2.5,
+                    pointHoverRadius: 5,
+                    fill: true,
+                    tension:.42
+                },
+                {
+                    label:'Квалы',
+                    data: d.mm.map(function(m){ return m.qual || 0; }),
+                    borderColor:'#34d399',
+                    backgroundColor: marketingQualBg,
+                    pointRadius: 2.5,
+                    pointHoverRadius: 5,
+                    fill: true,
+                    tension:.42
+                },
+                {
+                    label:'План лидов',
+                    data: d.mm.map(function(m){ return m.plan_leads || 0; }),
+                    borderColor:'#93c5fd',
+                    backgroundColor:'rgba(147,197,253,0.05)',
+                    borderDash:[8,5],
+                    pointRadius:1.5,
+                    fill:false,
+                    tension:.35
+                },
+                {
+                    label:'План квалов',
+                    data: d.mm.map(function(m){ return m.plan_qual_leads || 0; }),
+                    borderColor:'#86efac',
+                    backgroundColor:'rgba(134,239,172,0.05)',
+                    borderDash:[8,5],
+                    pointRadius:1.5,
+                    fill:false,
+                    tension:.35
+                }
+            ]
+        };
+        if (!charts.lineM) {
+            charts.lineM = new Chart(marketingCanvas, {
+                type: 'line',
+                data: lineMarketingData,
+                options: {
+                    responsive:true,
+                    maintainAspectRatio:false,
+                    animation: animLine(),
+                    interaction: { mode: 'index', intersect: false },
+                    plugins:{legend:{labels:{color:'#e5e7eb'}}},
+                    scales:{x:{ticks:{color:'#cbd5e1'}}, y:{ticks:{color:'#cbd5e1'}}}
+                }
+            });
+        } else {
+            charts.lineM.data = lineMarketingData;
+            charts.lineM.update();
+        }
+
+        var srcEntries = Object.entries(d.srcTotals).map(function(kv){ return {name:kv[0], leads:kv[1].leads}; }).filter(function(x){ return x.leads > 0; }).sort(function(a,b){ return b.leads - a.leads; });
+        var pieSourcesData = {
+            labels: srcEntries.map(function(x){return x.name;}),
+            datasets:[{
+                data: srcEntries.map(function(x){return x.leads;}),
+                backgroundColor: colors,
+                borderColor: 'rgba(11,18,32,.9)',
+                borderWidth: 2,
+                hoverOffset: 10
+            }]
+        };
+        if (!charts.pieSrc) {
+            charts.pieSrc = new Chart(document.getElementById('pie-sources'), {
+                type: 'doughnut',
+                data: pieSourcesData,
+                options: {
+                    responsive:true,
+                    maintainAspectRatio:false,
+                    animation: animPie(),
+                    plugins:{legend:{labels:{color:'#e5e7eb'}}}
+                }
+            });
+        } else {
+            charts.pieSrc.data = pieSourcesData;
+            charts.pieSrc.update();
+        }
+
+        var top = srcEntries.slice(0,6).map(function(x){ return x.name; });
+        var ds = top.map(function(s, i){
+            return { label:s, data:d.mm.map(function(m){ return ((m.by_source || {})[s] || {}).leads || 0; }), backgroundColor: colors[i % colors.length], stack:'s' };
+        });
+        var barSourcesData = { labels:mLabels, datasets:ds };
+        if (!charts.barSrc) {
+            charts.barSrc = new Chart(document.getElementById('bar-sources'), {
+                type:'bar',
+                data: barSourcesData,
+                options:{
+                    responsive:true,
+                    maintainAspectRatio:false,
+                    animation: animBar(),
+                    plugins:{legend:{labels:{color:'#e5e7eb'}}},
+                    scales:{x:{stacked:true,ticks:{color:'#cbd5e1'}}, y:{stacked:true,ticks:{color:'#cbd5e1'}}},
+                    datasets: { bar: { borderRadius: 6, borderSkipped: false } }
+                }
+            });
+        } else {
+            charts.barSrc.data = barSourcesData;
+            charts.barSrc.update();
+        }
+
+        var payTotals = payload.sales_totals && payload.sales_totals.by_payment ? payload.sales_totals.by_payment : {};
+        var piePaymentsData = {
+            labels:Object.keys(payTotals),
+            datasets:[{
+                data:Object.values(payTotals),
+                backgroundColor:colors,
+                borderColor:'rgba(11,18,32,.9)',
+                borderWidth:2,
+                hoverOffset:10
+            }]
+        };
+        if (!charts.piePay) {
+            charts.piePay = new Chart(document.getElementById('pie-payments'), {
+                type:'pie',
+                data: piePaymentsData,
+                options:{
+                    responsive:true,
+                    maintainAspectRatio:false,
+                    animation: animPie(),
+                    plugins:{legend:{labels:{color:'#e5e7eb'}}}
+                }
+            });
+        } else {
+            charts.piePay.data = piePaymentsData;
+            charts.piePay.update();
+        }
+
+        var sLabels = d.sm.map(function(m){ return m.label; });
+        var salesCanvas = document.getElementById('line-sales-amount');
+        var salesFactBg = makeGradient(salesCanvas, 'rgba(245,158,11,.35)', 'rgba(245,158,11,.02)');
+        var salesPlanBg = makeGradient(salesCanvas, 'rgba(167,139,250,.35)', 'rgba(167,139,250,.02)');
+        var lineSalesData = {
+            labels:sLabels,
+            datasets:[
+                {
+                    label:'Факт сумма',
+                    data:d.sm.map(function(m){ return m.sold_amount || 0; }),
+                    borderColor:'#f59e0b',
+                    backgroundColor:salesFactBg,
+                    fill:true,
+                    pointRadius:2.5,
+                    pointHoverRadius:5,
+                    tension:.42
+                },
+                {
+                    label:'План сумма',
+                    data:d.sm.map(function(m){ return m.plan_amount || 0; }),
+                    borderColor:'#a78bfa',
+                    backgroundColor:salesPlanBg,
+                    fill:true,
+                    pointRadius:2.5,
+                    pointHoverRadius:5,
+                    tension:.42
+                }
+            ]
+        };
+        if (!charts.lineSales) {
+            charts.lineSales = new Chart(salesCanvas, {
+                type:'line',
+                data: lineSalesData,
+                options:{
+                    responsive:true,
+                    maintainAspectRatio:false,
+                    animation: animLine(),
+                    interaction: { mode: 'index', intersect: false },
+                    plugins:{legend:{labels:{color:'#e5e7eb'}}},
+                    scales:{x:{ticks:{color:'#cbd5e1'}}, y:{ticks:{color:'#cbd5e1'}}}
+                }
+            });
+        } else {
+            charts.lineSales.data = lineSalesData;
+            charts.lineSales.update();
+        }
+
+        var barSalesData = {
+            labels:sLabels,
+            datasets:[
+                { label:'Факт площадь, м²', data:d.sm.map(function(m){ return m.sold_area || 0; }), backgroundColor:'#22c55e' },
+                { label:'План площадь, м²', data:d.sm.map(function(m){ return m.plan_area || 0; }), backgroundColor:'#6366f1' }
+            ]
+        };
+        if (!charts.barSales) {
+            charts.barSales = new Chart(document.getElementById('bar-sales-count'), {
+                type:'bar',
+                data: barSalesData,
+                options:{
+                    responsive:true,
+                    maintainAspectRatio:false,
+                    animation: animBar(),
+                    plugins:{legend:{labels:{color:'#e5e7eb'}}},
+                    scales:{x:{ticks:{color:'#cbd5e1'}}, y:{ticks:{color:'#cbd5e1'}}},
+                    datasets: { bar: { borderRadius: 6, borderSkipped: false } }
+                }
+            });
+        } else {
+            charts.barSales.data = barSalesData;
+            charts.barSales.update();
+        }
+
+        var modCats = (d.modulesYear && d.modulesYear.categories) ? d.modulesYear.categories : [];
+        var modData = {
+            labels: modCats.map(function(c){ return c.label; }),
+            datasets: [
+                { label: 'План площади, м²', data: modCats.map(function(c){ return c.plan_units || 0; }), backgroundColor: '#60a5fa' },
+                { label: 'Факт площади, м²', data: modCats.map(function(c){ return c.fact_units || 0; }), backgroundColor: '#34d399' }
+            ]
+        };
+        if (!charts.barModules) {
+            charts.barModules = new Chart(document.getElementById('bar-modules-cats'), {
+                type: 'bar',
+                data: modData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: animBar(),
+                    plugins:{legend:{labels:{color:'#e5e7eb'}}},
+                    scales:{x:{ticks:{color:'#cbd5e1'}}, y:{ticks:{color:'#cbd5e1'}}},
+                    datasets: { bar: { borderRadius: 6, borderSkipped: false } }
+                }
+            });
+        } else {
+            charts.barModules.data = modData;
+            charts.barModules.update();
+        }
+    }
+
+    function setError(msg) {
+        if (!msg) { errEl.style.display = 'none'; errEl.textContent = ''; return; }
+        errEl.style.display = 'block';
+        errEl.textContent = msg;
+    }
+
+    function refreshData() {
+        return fetch(dataUrl, { headers:{'X-Requested-With':'XMLHttpRequest'} })
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                if (!d || !d.ok) throw new Error((d && d.error) || 'Ошибка обновления');
+                payload = d.payload || payload;
+                if (updatedEl) updatedEl.textContent = d.cache_updated_at || '—';
+                fillYears();
+                render();
+                setError('');
+            })
+            .catch(function(e){ setError(e.message || 'Ошибка обновления дашборда'); });
+    }
+
+    function syncNow() {
+        return fetch(syncUrl, { method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'} })
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                if (!d || !d.ok) throw new Error((d && d.error) || 'Ошибка синхронизации');
+                return refreshData();
+            })
+            .catch(function(e){ setError(e.message || 'Ошибка синхронизации'); });
+    }
+
+    yearSel.addEventListener('change', render);
+    if (yearToggleBtn) {
+        yearToggleBtn.addEventListener('click', function () {
+            yearFilterEnabled = !yearFilterEnabled;
+            applyYearFilterUi();
+            render();
+        });
+    }
+    syncBtn.addEventListener('click', syncNow);
+    autoBtn.addEventListener('click', function(){
+        autoEnabled = !autoEnabled;
+        autoBtn.textContent = autoEnabled ? 'Автообновление: ВКЛ' : 'Автообновление: ВЫКЛ';
+    });
+
+    fillYears();
+    applyYearFilterUi();
+    render();
+    setInterval(function(){
+        if (document.visibilityState && document.visibilityState !== 'visible') return;
+        cycleYearForward();
+    }, 60000);
+    setInterval(function(){
+        if (!autoEnabled) return;
+        if (document.visibilityState && document.visibilityState !== 'visible') return;
+        syncNow();
+    }, 60000);
+})();
+</script>
+</body>
+</html>
