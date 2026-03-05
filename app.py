@@ -3142,7 +3142,7 @@ ROLES_HIERARCHY = {
         "subordinates": "Мастера (reports_to_production_id), работники (reports_to_production_id)",
     },
     "director_construction": {
-        "label": "Директор по строительству",
+        "label": "Директор строительства на участке",
         "reports_to": "Администратор",
         "reports_via": "Назначается в карточке пользователя",
         "duties": [
