@@ -44,7 +44,7 @@
                 {% if assigned_workers %}
                 <div class="users-table-wrap">
                     <table class="users-table">
-                        <thead><tr><th>Работник</th><th></th></tr></thead>
+                        <thead><tr><th scope="col">Работник</th><th scope="col"></th></tr></thead>
                         <tbody>
                         {% for w in assigned_workers %}
                             <tr>
@@ -174,7 +174,7 @@
             <input type="hidden" name="stage_id" id="editModalStageId">
             <div class="form-group">
                 <label for="photo_edit">Новые фотографии (заменят текущие)</label>
-                <input type="file" id="photo_edit" name="photo_edit" accept=".jpg,.jpeg,.png" multiple class="form-control">
+                <input type="file" id="photo_edit" name="photo_edit" accept="image/*" capture="environment" multiple class="form-control">
             </div>
             <div class="form-group">
                 <label for="comment_edit">Комментарий</label>
@@ -195,7 +195,7 @@
             <input type="hidden" name="stage_id" id="modalStageId">
             <div class="form-group">
                 <label for="photo">Фотографии (JPG, PNG, макс. 10 МБ каждая, можно несколько)</label>
-                <input type="file" id="photo" name="photo" accept=".jpg,.jpeg,.png" multiple class="form-control">
+                <input type="file" id="photo" name="photo" accept="image/*" capture="environment" multiple class="form-control">
             </div>
             <div class="form-group">
                 <label for="comment">Комментарий</label>

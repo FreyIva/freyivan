@@ -47,7 +47,9 @@
 </div>
 
 <section class="card">
-    <form method="post" action="{{ url_for('admin_project_edit', project_id=project.id) }}" enctype="multipart/form-data" class="form">
+    <form method="post" action="{{ url_for('admin_project_edit', project_id=project.id) }}" enctype="multipart/form-data" class="form" data-unsaved-warn>
+        <div class="form-section">
+            <h3 class="form-section-title">Основные данные</h3>
         <div class="form-row">
             <div class="form-group">
                 <label for="name">Название объекта</label>
@@ -147,6 +149,9 @@
         });
         </script>
         {% endif %}
+        </div>
+        <div class="form-section">
+            <h3 class="form-section-title">Фото и документы</h3>
         <div class="form-row">
             <div class="form-group">
                 <label for="photo">Фото проекта (оставьте пустым, чтобы не менять)</label>
@@ -205,6 +210,7 @@
                 <p class="card-meta">Не загружена. Менеджер ОП → Админ → Заказчик.</p>
                 {% endif %}
             </div>
+        </div>
         </div>
         <div class="form-row">
             <button type="submit" class="btn btn-primary">Сохранить</button>

@@ -8,11 +8,20 @@
 <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
 <a href="{{ url_for('director_production_work_approvals') }}" class="nav-link">Подтверждение работ</a>
 <a href="{{ url_for('director_stage_confirmations') }}" class="nav-link active">Подтверждение этапов</a>
+<a href="{{ url_for('director_production_calendar') }}" class="nav-link">Производственный календарь</a>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% elif session.get('role') == 'admin' %}
+<a href="{{ url_for('admin_projects') }}" class="nav-link">Проекты</a>
+<a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+<a href="{{ url_for('director_stage_confirmations') }}" class="nav-link active">Подтверждение этапов</a>
+<a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Календарь</a>
 {% include '_nav_spravochniki_dropdown.html' %}
 {% else %}
 <a href="{{ url_for('director_construction_dashboard') }}" class="nav-link">Дашборд</a>
 <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
 <a href="{{ url_for('director_stage_confirmations') }}" class="nav-link active">Подтверждение этапов</a>
+<a href="{{ url_for('director_construction_calendar') }}" class="nav-link">Производственный календарь</a>
+{% include '_nav_spravochniki_dropdown.html' %}
 {% endif %}
 {% endblock %}
 
@@ -29,7 +38,7 @@
         {% if session.get('role') == 'director_production' %}
         Модульные дома: подтвердите факт выполнения этапа после отчёта мастера.
         {% else %}
-        Каркас/газобетон/пенополистирол: подтвердите факт выполнения этапа после отчёта прораба.
+        Этапы прораба подтверждает директор по строительству. Каркас/газобетон/пенополистирол.
         {% endif %}
     </p>
 </div>
@@ -39,7 +48,7 @@
     <div class="users-table-wrap">
         <table class="users-table">
             <thead>
-                <tr><th>Проект</th><th>Тип</th><th>Этап</th><th>Действие</th></tr>
+                <tr><th scope="col">Проект</th><th scope="col">Тип</th><th scope="col">Этап</th>{% if stages and stages[0].get('stage_completion_id') %}<th scope="col">Комментарий прораба</th>{% endif %}<th scope="col">Действие</th></tr>
             </thead>
             <tbody>
                 {% for s in stages %}
@@ -47,18 +56,116 @@
                     <td>{{ s.project_name }}</td>
                     <td>{{ building_types.get(s.type, s.type) }}</td>
                     <td>{{ s.name }}</td>
+                    {% if s.get('stage_completion_id') %}
+                    <td>
+                        {% if s.completion_comment %}<p class="stage-comment">{{ s.completion_comment }}</p>{% endif %}
+                        {% if s.get('reports') %}
+                        <div class="photo-carousel-wrap stage-confirm-photos">
+                            <div class="photo-carousel">
+                            {% for r in s.reports %}
+                            {% if r.get('photo_token') %}
+                            <a href="{{ url_for('media_file', token=r['photo_token']) }}" class="photo-carousel-item photo-open-lightbox" title="{{ r.get('comment') or 'Фото' }}">
+                                <img src="{{ url_for('media_file', token=r['photo_token']) }}" alt="Фото от прораба">
+                            </a>
+                            {% endif %}
+                            {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% if not s.completion_comment and not (s.get('reports')|selectattr('photo_token')|list) %}—{% endif %}
+                    </td>
+                    <td>
+                        <form method="post" action="{{ url_for('stage_completion_confirm', sc_id=s.stage_completion_id) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-small btn-primary">Подтвердить</button>
+                        </form>
+                        <button type="button" class="btn btn-small btn-outline reject-stage-btn" data-sc-id="{{ s.stage_completion_id }}" data-stage-name="{{ s.name }}">Отклонить</button>
+                        <a href="{{ url_for('director_project_chat', project_id=s.project_id) }}" class="btn btn-small btn-outline">Чат</a>
+                    </td>
+                    {% else %}
                     <td>
                         <form method="post" action="{{ url_for('stage_confirm', stage_id=s.id) }}" style="display:inline;">
                             <button type="submit" class="btn btn-small btn-primary">Подтвердить</button>
                         </form>
                         <a href="{{ url_for('director_project_chat', project_id=s.project_id) }}" class="btn btn-small btn-outline">Чат</a>
                     </td>
+                    {% endif %}
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </section>
+
+{% if stages and stages[0].get('stage_completion_id') %}
+<!-- Модалка отклонения -->
+<div id="rejectModal" class="modal">
+    <div class="modal-content">
+        <span class="modal-close">&times;</span>
+        <h3>Отклонить этап: <span id="rejectStageName"></span></h3>
+        <p class="card-meta">Укажите причину — прораб увидит комментарий и сможет доработать.</p>
+        <form method="post" action="" id="rejectForm">
+            <div class="form-group">
+                <label for="rejection_comment">Причина отклонения</label>
+                <textarea id="rejection_comment" name="rejection_comment" rows="4" class="form-control" required placeholder="Комментарий для прораба"></textarea>
+            </div>
+            <button type="submit" class="btn btn-danger">Отклонить</button>
+        </form>
+    </div>
+</div>
+<script>
+(function() {
+    var modal = document.getElementById('rejectModal');
+    var form = document.getElementById('rejectForm');
+    var btns = document.querySelectorAll('.reject-stage-btn');
+    if (modal && form && btns.length) {
+        btns.forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var scId = btn.getAttribute('data-sc-id');
+                var name = btn.getAttribute('data-stage-name');
+                document.getElementById('rejectStageName').textContent = name;
+                form.action = '/stage-completion/' + scId + '/reject';
+                modal.classList.add('active');
+            });
+        });
+        modal.querySelectorAll('.modal-close').forEach(function(btn) {
+            btn.addEventListener('click', function() { modal.classList.remove('active'); });
+        });
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) modal.classList.remove('active');
+        });
+    }
+})();
+</script>
+<!-- Lightbox для фото от прораба -->
+<div id="stageConfirmLightbox" class="lightbox">
+    <span class="lightbox-close">&times;</span>
+    <img src="" alt="Фото" class="lightbox-img">
+</div>
+<script>
+(function() {
+    var lightbox = document.getElementById('stageConfirmLightbox');
+    var lightboxImg = lightbox && lightbox.querySelector('.lightbox-img');
+    var links = document.querySelectorAll('.stage-confirm-photos .photo-open-lightbox');
+    function closeLb() { if (lightbox) lightbox.classList.remove('active'); }
+    links.forEach(function(a) {
+        a.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (lightboxImg && this.href) {
+                lightboxImg.src = this.href;
+                lightbox.classList.add('active');
+            }
+        });
+    });
+    if (lightbox) {
+        lightbox.querySelector('.lightbox-close').addEventListener('click', closeLb);
+        lightbox.addEventListener('click', function(e) { if (e.target === lightbox) closeLb(); });
+    }
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && lightbox && lightbox.classList.contains('active')) closeLb();
+    });
+})();
+</script>
+{% endif %}
 {% else %}
 <p class="empty-state">Нет этапов, ожидающих подтверждения.</p>
 {% endif %}

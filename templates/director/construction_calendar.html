@@ -7,6 +7,7 @@
 <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
 <a href="{{ url_for('director_stage_confirmations') }}" class="nav-link">Подтверждение этапов</a>
 <a href="{{ url_for('director_construction_calendar') }}" class="nav-link active">Производственный календарь</a>
+{% include '_nav_spravochniki_dropdown.html' %}
 {% endblock %}
 
 {% block breadcrumbs %}

@@ -70,7 +70,7 @@
             </div>
             <div class="role-node">
                 <span class="role-badge badge-director_construction">Дир. строительства на участке</span>
-                <p class="role-node-hint">Прорабы (каркас, газобетон, пенополистирол, монтаж модулей на участке)</p>
+                <p class="role-node-hint">Все проекты каркас/газоблок/пенополистирол, все прорабы</p>
             </div>
         </div>
         <div class="roles-connector">↓</div>
@@ -117,13 +117,53 @@
             {% if role_data.get('subordinates') %}
             <p class="roles-subordinates"><strong>Подчинённые:</strong> {{ role_data.subordinates }}</p>
             {% endif %}
+            <h4 class="roles-subsection">Обязанности и возможности</h4>
             <ul class="roles-duties">
                 {% for duty in role_data.duties %}
                 <li>{{ duty }}</li>
                 {% endfor %}
             </ul>
+            {% if role_data.get('rights') %}
+            <h4 class="roles-subsection">Права доступа (кратко)</h4>
+            <ul class="roles-rights">
+                {% for right in role_data.rights %}
+                <li>{{ right }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
         </div>
         {% endfor %}
+    </div>
+</section>
+
+<section class="card">
+    <h2>Сводная таблица прав</h2>
+    <div class="users-table-wrap">
+        <table class="users-table roles-rights-table">
+            <thead>
+                <tr>
+                    <th>Роль</th>
+                    <th>Проекты</th>
+                    <th>Этапы / Даты</th>
+                    <th>Документы</th>
+                    <th>Подтверждение этапов</th>
+                    <th>Отчёты / Календарь</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td><span class="role-badge badge-superadmin">Супер-админ</span></td><td>Все</td><td>Все</td><td>Одобрение</td><td>Все</td><td>Все</td></tr>
+                <tr><td><span class="role-badge badge-admin">Администратор</span></td><td>Все</td><td>Все, даты редактирует</td><td>Одобрение</td><td>Все</td><td>Все</td></tr>
+                <tr><td><span class="role-badge badge-manager_op">Менеджер ОП</span></td><td>Свои</td><td>Добавление, даты — нет</td><td>Загрузка</td><td>—</td><td>Свои проекты</td></tr>
+                <tr><td><span class="role-badge badge-rop">РОП</span></td><td>По правам</td><td>—</td><td>—</td><td>—</td><td>amoCRM</td></tr>
+                <tr><td><span class="role-badge badge-marketer">Маркетолог</span></td><td>—</td><td>—</td><td>—</td><td>—</td><td>amoCRM</td></tr>
+                <tr><td><span class="role-badge badge-director_production">Дир. по производству</span></td><td>Модуль, мастера направления</td><td>—</td><td>—</td><td>Модуль</td><td>Работники, календарь</td></tr>
+                <tr><td><span class="role-badge badge-director_construction">Дир. по строительству</span></td><td><strong>Все</strong> каркас/газоблок/пенополистирол</td><td>—</td><td>—</td><td>Подтверждение/отклонение</td><td>Прорабы, календарь</td></tr>
+                <tr><td><span class="role-badge badge-master">Мастер</span></td><td>Свои (master_id)</td><td>Отчёты</td><td>—</td><td>Модуль</td><td>Работники</td></tr>
+                <tr><td><span class="role-badge badge-foreman">Прораб</span></td><td>Назначенные</td><td>Закрытие подэтапов</td><td>—</td><td>Отправка на проверку</td><td>—</td></tr>
+                <tr><td><span class="role-badge badge-worker">Работник</span></td><td>Назначенные</td><td>—</td><td>—</td><td>—</td><td>Закрытие дня</td></tr>
+                <tr><td><span class="role-badge badge-client">Заказчик</span></td><td>Свои</td><td>Просмотр</td><td>Подтверждение</td><td>—</td><td>—</td></tr>
+            </tbody>
+        </table>
     </div>
 </section>
 
@@ -172,12 +212,14 @@
     </div>
 
     <div class="scenario-block">
-        <h3>4. Строительство на участке (каркас / газобетон / пенополистирол / монтаж модулей): этапы и отчёты</h3>
+        <h3>4. Строительство на участке (каркас / газобетон / пенополистирол): этапы и отчёты</h3>
         <ol class="scenario-steps">
-            <li><strong>Админ</strong> назначает <strong>Директора строительства на участке</strong> проекту (при редактировании проекта)</li>
-            <li><strong>Директор строительства на участке</strong> назначает объект прорабу (foreman_project_access)</li>
-            <li><strong>Прораб</strong> закрывает рабочий день: работы по этапу + % + комментарий</li>
-            <li><strong>Директор строительства на участке</strong> подтверждает этап → этап закрыт</li>
+            <li><strong>Админ</strong> или <strong>Менеджер ОП</strong> создаёт проект (при создании — подэтапы из справочника)</li>
+            <li><strong>Директор по строительству</strong> назначает объект прорабу (foreman_project_access)</li>
+            <li><strong>Прораб</strong> закрывает каждый подэтап: минимум 3 фото + комментарий + чек-лист (если есть)</li>
+            <li>Когда все подэтапы закрыты — <strong>прораб</strong> нажимает «Отправить на проверку»</li>
+            <li><strong>Директор по строительству</strong> подтверждает или отклоняет этап (при отклонении — комментарий, прораб дорабатывает и отправляет снова)</li>
+            <li><strong>Прораб</strong> также закрывает рабочий день: работы + % + комментарий</li>
         </ol>
     </div>
 
@@ -205,7 +247,8 @@
         <ol class="scenario-steps">
             <li><strong>Прораб</strong> заходит в проект → «Чат проекта»</li>
             <li>Пишет сообщение, при необходимости привязывает к этапу</li>
-            <li>В чате видят: <strong>Админ</strong>, <strong>Менеджер ОП</strong>, <strong>Директор строительства на участке</strong> — любой может ответить</li>
+            <li>В чате видят: <strong>Админ</strong>, <strong>Менеджер ОП</strong>, <strong>Директор по строительству</strong> — любой может ответить</li>
+            <li><strong>Директор по строительству</strong> видит все проекты каркас/газоблок/пенополистирол и может подтверждать/отклонять этапы</li>
         </ol>
     </div>
 

@@ -383,15 +383,42 @@ STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
 DATABASE = Path(__file__).parent / "database.db"
 MEDIA_DB = Path(__file__).parent / "media.db"
 
-# Виды справочника работ
+# Виды справочника работ: Производство (модульные) и Стройка на участке (каркас, газоблок, пенополистиролбетон)
 WORK_ITEM_TYPES = {
     "production": "Производство",
-    "construction": "Участок",
+    "construction": "Стройка на участке",
 }
+
+# Seed работ для стройки на участке (каркас, газоблок, пенополистиролбетон) — прораб
+WORK_ITEMS_CONSTRUCTION_SEED = [
+    "Фундамент: разметка и подготовка",
+    "Фундамент: установка свай",
+    "Фундамент: ростверк",
+    "Каркас: сборка и установка",
+    "Каркас: укосины и усиления",
+    "Обшивка каркаса ОСП",
+    "Утепление стен каркаса",
+    "Пароизоляция и ветрозащита",
+    "Монтаж кровли",
+    "Монтаж окон и дверей",
+    "Внутренняя отделка: гипсокартон",
+    "Внутренняя отделка: шпаклёвка и покраска",
+    "Электромонтаж на участке",
+    "Сантехника на участке",
+    "Газоблок: кладка стен",
+    "Газоблок: армирование",
+    "Газоблок: перемычки",
+    "Пенополистиролбетон: монтаж блоков",
+    "Пенополистиролбетон: армирование",
+    "Дополнительные работы на участке",
+]
+
+# Минимум фотографий для закрытия этапа прорабом (стройка на участке)
+MIN_STAGE_PHOTOS = 3
 
 # Типы строений для выпадающих списков
 BUILDING_TYPES = {
-    "frame": "Каркасный",
+    "frame": "Каркас",
     "module": "Модульный",
     "gasblock": "Газоблок",
     "penopolistirol": "Пенополистиролбетон",
@@ -985,11 +1012,16 @@ def _current_user_role(conn, user_id: int) -> str | None:
 def can_user_access_project(conn, *, user_id: int, role: str, project_id: int) -> bool:
     pid = int(project_id)
     uid = int(user_id)
+    if is_superadmin(uid):
+        return True
     if role == "admin":
         return True
     if role == "master":
         return (
-            conn.execute("SELECT 1 FROM projects WHERE id = ? AND master_id = ?", (pid, uid)).fetchone()
+            conn.execute(
+                "SELECT 1 FROM projects WHERE id = ? AND master_id = ? AND type = 'module'",
+                (pid, uid),
+            ).fetchone()
             is not None
         )
     if role == "client":
@@ -1000,7 +1032,9 @@ def can_user_access_project(conn, *, user_id: int, role: str, project_id: int) -
     if role == "worker":
         return (
             conn.execute(
-                "SELECT 1 FROM worker_project_access WHERE worker_id = ? AND project_id = ?",
+                """SELECT 1 FROM worker_project_access wpa
+                   JOIN projects p ON p.id = wpa.project_id AND p.type = 'module'
+                   WHERE wpa.worker_id = ? AND wpa.project_id = ?""",
                 (uid, pid),
             ).fetchone()
             is not None
@@ -1014,37 +1048,29 @@ def can_user_access_project(conn, *, user_id: int, role: str, project_id: int) -
             is not None
         )
     if role == "director_production":
-        # проекты мастеров направления (как в director_production_dashboard)
+        # проекты мастеров направления — только модульные (как в director_production_dashboard)
         return (
             conn.execute(
                 """SELECT 1
                    FROM projects p
                    JOIN users m ON m.id = p.master_id
-                   WHERE p.id = ? AND m.role = 'master' AND m.reports_to_production_id = ?""",
+                   WHERE p.id = ? AND p.type = 'module' AND m.role = 'master' AND m.reports_to_production_id = ?""",
                 (pid, uid),
             ).fetchone()
             is not None
         )
     if role == "director_construction":
-        # проекты, где назначен этот директор ИЛИ есть прораб его направления
-        proj_cols = [r[1] for r in conn.execute("PRAGMA table_info(projects)").fetchall()]
-        if "director_construction_id" in proj_cols:
-            proj = conn.execute(
-                "SELECT director_construction_id FROM projects WHERE id = ?", (pid,)
-            ).fetchone()
-            if proj and proj.get("director_construction_id") == uid:
-                return True
-        return (
-            conn.execute(
-                """SELECT 1
-                   FROM foreman_project_access fpa
-                   JOIN users u ON u.id = fpa.foreman_id
-                   WHERE fpa.project_id = ?
-                     AND u.role = 'foreman'
-                     AND u.reports_to_construction_id = ?""",
-                (pid, uid),
-            ).fetchone()
-            is not None
+        # Директор по строительству — доступ ко ВСЕМ проектам каркас/газоблок/пенополистирол
+        proj = conn.execute(
+            "SELECT type FROM projects WHERE id = ?", (pid,)
+        ).fetchone()
+        return proj is not None and proj["type"] in ("frame", "gasblock", "penopolistirol")
+    if role == "manager_op":
+        proj = conn.execute(
+            "SELECT created_by_id, responsible_manager_id FROM projects WHERE id = ?", (pid,)
+        ).fetchone()
+        return proj is not None and (
+            proj["created_by_id"] == uid or proj["responsible_manager_id"] == uid
         )
     return False
 
@@ -1202,17 +1228,34 @@ def _normalize_work_item_name(name: str) -> str:
     return name.casefold()
 
 
-def _rebuild_work_item_codes(conn):
-    rows = conn.execute(
-        "SELECT id FROM work_items ORDER BY name COLLATE NOCASE ASC, id ASC"
-    ).fetchall()
+def _rebuild_work_item_codes(conn, work_item_type: str | None = None):
+    """Перенумеровать code по алфавиту. work_item_type — ограничить только этим типом."""
+    if work_item_type:
+        rows = conn.execute(
+            "SELECT id FROM work_items WHERE work_item_type = ? ORDER BY name COLLATE NOCASE ASC, id ASC",
+            (work_item_type,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT id FROM work_items ORDER BY name COLLATE NOCASE ASC, id ASC"
+        ).fetchall()
     for idx, r in enumerate(rows, start=1):
         conn.execute("UPDATE work_items SET code = ? WHERE id = ?", (idx, int(r["id"])))
 
 
-def _dedupe_work_items(conn):
-    """Удаляет дубли по нормализованному названию, сохраняя один элемент и перенося ссылки."""
-    items = [dict(r) for r in conn.execute("SELECT id, name FROM work_items").fetchall()]
+def _dedupe_work_items(conn, work_item_type: str | None = None):
+    """Удаляет дубли по нормализованному названию, сохраняя один элемент и перенося ссылки.
+    work_item_type — ограничить только этим типом (production/construction)."""
+    if work_item_type:
+        items = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT id, name FROM work_items WHERE work_item_type = ?",
+                (work_item_type,),
+            ).fetchall()
+        ]
+    else:
+        items = [dict(r) for r in conn.execute("SELECT id, name FROM work_items").fetchall()]
     groups = {}
     for it in items:
         key = _normalize_work_item_name(it.get("name") or "")
@@ -1433,6 +1476,12 @@ def init_db():
             FOREIGN KEY (edit_request_id) REFERENCES edit_requests (id) ON DELETE CASCADE
         )
     """)
+    er_cols = [r[1] for r in cursor.execute("PRAGMA table_info(edit_requests)").fetchall()]
+    if "admin_comment" not in er_cols:
+        try:
+            cursor.execute("ALTER TABLE edit_requests ADD COLUMN admin_comment TEXT")
+        except sqlite3.OperationalError:
+            pass
 
     # Доступ работников к проектам (мастер открывает конкретные объекты работникам)
     cursor.execute("""
@@ -1472,6 +1521,40 @@ def init_db():
             work_cost REAL NOT NULL DEFAULT 0,
             unit_price REAL NOT NULL DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Справочник этапов стройки на участке (по направлениям: frame, gasblock, penopolistirol)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS construction_stage_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            building_type TEXT NOT NULL CHECK (building_type IN ('frame', 'gasblock', 'penopolistirol')),
+            name TEXT NOT NULL,
+            order_num INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(building_type, name)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS construction_substage_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            stage_template_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            order_num INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (stage_template_id) REFERENCES construction_stage_templates (id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS construction_operation_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            substage_template_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            order_num INTEGER NOT NULL DEFAULT 0,
+            check_what_title TEXT,
+            check_what_items TEXT,
+            control_items TEXT,
+            typical_errors TEXT,
+            quick_checklist TEXT,
+            FOREIGN KEY (substage_template_id) REFERENCES construction_substage_templates (id) ON DELETE CASCADE
         )
     """)
 
@@ -1611,6 +1694,85 @@ def init_db():
             cursor.execute("ALTER TABLE stages ADD COLUMN stage_confirmed_at DATETIME")
         except sqlite3.OperationalError:
             pass
+    if "stage_template_id" not in stage_cols:
+        try:
+            cursor.execute("ALTER TABLE stages ADD COLUMN stage_template_id INTEGER REFERENCES construction_stage_templates(id)")
+        except sqlite3.OperationalError:
+            pass
+
+    # Миграция: project_substages, substage_completions, stage_completions
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS project_substages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            stage_id INTEGER NOT NULL REFERENCES stages(id) ON DELETE CASCADE,
+            substage_template_id INTEGER REFERENCES construction_substage_templates(id),
+            name TEXT NOT NULL,
+            order_num INTEGER NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS substage_completions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_substage_id INTEGER NOT NULL REFERENCES project_substages(id) ON DELETE CASCADE,
+            foreman_id INTEGER NOT NULL REFERENCES users(id),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            comment TEXT,
+            checklist_data TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS stage_completions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            stage_id INTEGER NOT NULL REFERENCES stages(id) ON DELETE CASCADE,
+            foreman_id INTEGER NOT NULL REFERENCES users(id),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            comment TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            confirmed_by_id INTEGER REFERENCES users(id),
+            confirmed_at DATETIME,
+            rejection_comment TEXT
+        )
+    """)
+    cursor.execute("PRAGMA table_info(reports)")
+    report_cols = [r[1] for r in cursor.fetchall()]
+    if "substage_completion_id" not in report_cols:
+        try:
+            cursor.execute("ALTER TABLE reports ADD COLUMN substage_completion_id INTEGER REFERENCES substage_completions(id) ON DELETE SET NULL")
+        except sqlite3.OperationalError:
+            pass
+
+    # Миграция: backfill project_substages для существующих этапов (frame/gasblock/penopolistirol)
+    for stage_row in cursor.execute(
+        """SELECT s.id, s.name, s.stage_template_id, p.type
+           FROM stages s JOIN projects p ON p.id = s.project_id
+           WHERE p.type IN ('frame', 'gasblock', 'penopolistirol')
+           AND NOT EXISTS (SELECT 1 FROM project_substages WHERE stage_id = s.id)"""
+    ).fetchall():
+        if stage_row["stage_template_id"]:
+            substage_tpl = cursor.execute(
+                """SELECT id, name, order_num FROM construction_substage_templates
+                   WHERE stage_template_id = ? ORDER BY order_num""",
+                (stage_row["stage_template_id"],),
+            ).fetchall()
+            if substage_tpl:
+                for sub in substage_tpl:
+                    cursor.execute(
+                        """INSERT INTO project_substages (stage_id, substage_template_id, name, order_num)
+                           VALUES (?, ?, ?, ?)""",
+                        (stage_row["id"], sub["id"], sub["name"], sub["order_num"]),
+                    )
+            else:
+                cursor.execute(
+                    """INSERT INTO project_substages (stage_id, substage_template_id, name, order_num)
+                       VALUES (?, NULL, ?, 1)""",
+                    (stage_row["id"], stage_row["name"]),
+                )
+        else:
+            cursor.execute(
+                """INSERT INTO project_substages (stage_id, substage_template_id, name, order_num)
+                   VALUES (?, NULL, ?, 1)""",
+                (stage_row["id"], stage_row["name"]),
+            )
 
     # Заполнить planned_start_date и planned_end_date для этапов без них (тестовые данные)
     def _parse_d(s):
@@ -2030,51 +2192,109 @@ def init_db():
     # Seed справочника работ (один раз)
     cursor.execute("SELECT COUNT(*) FROM work_items")
     if cursor.fetchone()[0] == 0:
-        # Сначала — прайс-лист с нормированными значениями
+        # Производство: прайс-лист с нормированными значениями (модульные дома)
         for name, labor, hour_price, work_cost in WORK_ITEMS_PRICE_LIST:
             try:
                 cursor.execute(
-                    """INSERT INTO work_items (name, labor_hours, hour_price, work_cost, unit_price, active)
-                       VALUES (?, ?, ?, ?, ?, 1)""",
+                    """INSERT INTO work_items (name, work_item_type, labor_hours, hour_price, work_cost, unit_price, active)
+                       VALUES (?, 'production', ?, ?, ?, ?, 1)""",
                     (name, float(labor), float(hour_price), float(work_cost), float(work_cost)),
                 )
             except sqlite3.IntegrityError:
                 pass
-        # Затем — остальные работы (если есть) без нормирования
+        # Производство: остальные работы без нормирования
         for name in WORK_ITEMS_SEED:
             try:
                 cursor.execute(
-                    "INSERT INTO work_items (name, active) VALUES (?, 1)",
+                    "INSERT INTO work_items (name, work_item_type, active) VALUES (?, 'production', 1)",
+                    (name,),
+                )
+            except sqlite3.IntegrityError:
+                pass
+        # Стройка на участке: работы для прорабов (каркас, газоблок, пенополистиролбетон)
+        for name in WORK_ITEMS_CONSTRUCTION_SEED:
+            try:
+                cursor.execute(
+                    "INSERT INTO work_items (name, work_item_type, active) VALUES (?, 'construction', 1)",
+                    (name,),
+                )
+            except sqlite3.IntegrityError:
+                pass
+    # Если справочник «Стройка на участке» пуст — добавить seed
+    cursor.execute("SELECT COUNT(*) FROM work_items WHERE work_item_type = 'construction'")
+    if cursor.fetchone()[0] == 0:
+        for name in WORK_ITEMS_CONSTRUCTION_SEED:
+            try:
+                cursor.execute(
+                    "INSERT INTO work_items (name, work_item_type, active) VALUES (?, 'construction', 1)",
                     (name,),
                 )
             except sqlite3.IntegrityError:
                 pass
 
-    # Ответственный ОП Александр: назначить все проекты на него
+    # Справочник этапов стройки на участке (frame, gasblock, penopolistirol)
+    try:
+        from construction_stage_seed import seed_construction_stage_templates
+        seed_construction_stage_templates(cursor)
+    except ImportError:
+        pass
+
+    # Ответственный ОП: назначить проекты БЕЗ ответственного (только NULL, не перезаписывать существующие)
     proj_cols = [r[1] for r in cursor.execute("PRAGMA table_info(projects)").fetchall()]
     if "responsible_manager_id" in proj_cols:
-        alexander = cursor.execute(
-            """SELECT id FROM users WHERE role = 'manager_op'
-               AND (username LIKE '%alex%' OR full_name LIKE '%лександр%' OR full_name LIKE '%Alexander%')
-               ORDER BY id LIMIT 1"""
+        first_op = cursor.execute(
+            "SELECT id FROM users WHERE role = 'manager_op' ORDER BY id LIMIT 1"
         ).fetchone()
-        if not alexander:
-            alexander = cursor.execute(
-                "SELECT id FROM users WHERE username = 'alexander' AND role = 'manager_op'"
-            ).fetchone()
-        if not alexander:
+        if first_op:
             cursor.execute(
-                """INSERT INTO users (username, password, role, full_name, phone)
-                   VALUES (?, ?, 'manager_op', ?, '')""",
-                ("alexander", generate_password_hash("alexander123"), "Александр (менеджер ОП)"),
+                "UPDATE projects SET responsible_manager_id = ? WHERE responsible_manager_id IS NULL",
+                (first_op[0],),
             )
-            alexander_id = cursor.lastrowid
-        else:
-            alexander_id = alexander[0]
-        cursor.execute("UPDATE projects SET responsible_manager_id = ?", (alexander_id,))
 
     conn.commit()
     conn.close()
+
+
+_db_initialized = False
+
+
+@app.before_request
+def ensure_db_initialized():
+    """Гарантирует выполнение миграций при запуске через flask run (init_db иначе вызывается только при python app.py)."""
+    global _db_initialized
+    if not _db_initialized:
+        init_db()
+        _db_initialized = True
+
+
+@app.before_request
+def refresh_session_user_context():
+    """
+    Синхронизируем сессию с БД на каждом запросе:
+    изменение роли/ФИО/логина применяется без повторного входа.
+    """
+    if request.endpoint == "static":
+        return None
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+
+    conn = get_db()
+    user = conn.execute(
+        "SELECT id, username, role, full_name FROM users WHERE id = ?",
+        (int(user_id),),
+    ).fetchone()
+    conn.close()
+
+    if not user:
+        session.clear()
+        flash("Сессия обновлена. Войдите в систему снова.", "warning")
+        return redirect(url_for("login"))
+
+    session["username"] = user["username"]
+    session["role"] = user["role"]
+    session["full_name"] = user["full_name"]
+    return None
 
 
 def login_required(f):
@@ -2110,7 +2330,7 @@ def admin_required(f):
 
 
 def projects_manager_required(f):
-    """Декоратор: админ, менеджер ОП, РОП, маркетолог или супер-админ — доступ к проектам и amoCRM-отчётам"""
+    """Декоратор: админ, менеджер ОП, РОП, маркетолог или супер-админ — доступ к amoCRM-отчётам"""
 
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -2131,6 +2351,53 @@ def projects_manager_required(f):
             return redirect(url_for("index"))
         return f(*args, **kwargs)
 
+    return decorated
+
+
+def admin_or_manager_op_required(f):
+    """Декоратор: только админ или менеджер ОП — управление проектами, календарь, чат.
+    РОП и маркетолог — только amoCRM, не имеют доступа к проектам."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "user_id" not in session:
+            flash("Войдите в систему.", "warning")
+            return redirect(url_for("login"))
+        real_id = session.get("super_admin_id") or session["user_id"]
+        conn = get_db()
+        user = conn.execute("SELECT role FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+        conn.close()
+        if not user:
+            flash("Доступ запрещён.", "error")
+            return redirect(url_for("index"))
+        role_ok = user["role"] in ("admin", "manager_op")
+        superadmin_ok = is_superadmin(real_id)
+        if not (role_ok or superadmin_ok):
+            flash("Доступ только для администратора или менеджера ОП.", "error")
+            return redirect(url_for("index"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def admin_or_manager_op_or_director_construction_required(f):
+    """Декоратор: админ, менеджер ОП или директор по строительству — для страницы этапов проекта.
+    Директор по строительству — только для проектов каркас/газоблок/пенополистирол (проверка внутри view)."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "user_id" not in session:
+            flash("Войдите в систему.", "warning")
+            return redirect(url_for("login"))
+        conn = get_db()
+        user = conn.execute("SELECT role FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+        conn.close()
+        if not user:
+            flash("Доступ запрещён.", "error")
+            return redirect(url_for("index"))
+        role_ok = user["role"] in ("admin", "manager_op", "director_construction")
+        superadmin_ok = is_superadmin(session.get("super_admin_id") or session["user_id"])
+        if not (role_ok or superadmin_ok):
+            flash("Доступ запрещён.", "error")
+            return redirect(url_for("index"))
+        return f(*args, **kwargs)
     return decorated
 
 
@@ -2192,7 +2459,12 @@ def director_production_required(f):
 
 
 def work_items_manager_required(f):
-    """Доступ к справочнику работ: админ или директор по производству."""
+    """
+    Доступ к справочнику работ:
+    - админ: оба справочника (Производство + Стройка на участке)
+    - директор по производству: только Производство
+    - директор по строительству: только Стройка на участке
+    """
 
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -2202,7 +2474,7 @@ def work_items_manager_required(f):
         conn = get_db()
         user = conn.execute("SELECT role FROM users WHERE id = ?", (session["user_id"],)).fetchone()
         conn.close()
-        if not user or user["role"] not in ("admin", "director_production"):
+        if not user or user["role"] not in ("admin", "director_production", "director_construction"):
             flash("Доступ запрещён.", "error")
             return redirect(url_for("index"))
         return f(*args, **kwargs)
@@ -2226,6 +2498,49 @@ def director_construction_required(f):
             return redirect(url_for("index"))
         return f(*args, **kwargs)
 
+    return decorated
+
+
+def director_production_or_construction_required(f):
+    """Декоратор: директор по производству или по строительству (или admin/superadmin)"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "user_id" not in session:
+            flash("Войдите в систему.", "warning")
+            return redirect(url_for("login"))
+        uid = session.get("user_id")
+        conn = get_db()
+        user = conn.execute("SELECT role FROM users WHERE id = ?", (uid,)).fetchone()
+        conn.close()
+        if not user:
+            flash("Доступ запрещён.", "error")
+            return redirect(url_for("index"))
+        role_ok = user["role"] in ("admin", "director_production", "director_construction")
+        superadmin_ok = is_superadmin(uid)
+        if not (role_ok or superadmin_ok):
+            flash("Доступ запрещён.", "error")
+            return redirect(url_for("index"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def admin_or_director_construction_required(f):
+    """Декоратор: только admin или директор по строительству — справочник этапов стройки"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "user_id" not in session:
+            flash("Войдите в систему.", "warning")
+            return redirect(url_for("login"))
+        uid = session.get("user_id")
+        conn = get_db()
+        user = conn.execute("SELECT role FROM users WHERE id = ?", (uid,)).fetchone()
+        conn.close()
+        role_ok = user and user["role"] in ("admin", "director_construction")
+        superadmin_ok = is_superadmin(uid)
+        if not (role_ok or superadmin_ok):
+            flash("Доступ запрещён.", "error")
+            return redirect(url_for("index"))
+        return f(*args, **kwargs)
     return decorated
 
 
@@ -2656,6 +2971,75 @@ def get_pending_takeover_requests_count():
         conn.close()
 
 
+def get_pending_work_approvals_count_for_master(master_id):
+    """Количество работ работников, ожидающих подтверждения мастера (главный по подтверждению)."""
+    conn = get_db()
+    try:
+        count = conn.execute(
+            """SELECT COUNT(*) FROM worker_daily_report_items it
+               JOIN worker_daily_reports dr ON dr.id = it.daily_report_id
+               JOIN users u ON u.id = dr.worker_id
+               WHERE u.role = 'worker' AND u.reports_to_id = ?
+                 AND COALESCE(it.approved_status, 'approved') = 'pending'""",
+            (master_id,),
+        ).fetchone()[0]
+        return count
+    finally:
+        conn.close()
+
+
+def get_pending_work_approvals_count_for_director_production(director_id):
+    """Количество работ работников направления, ожидающих подтверждения (директор по производству)."""
+    conn = get_db()
+    try:
+        count = conn.execute(
+            """SELECT COUNT(*) FROM worker_daily_report_items it
+               JOIN worker_daily_reports dr ON dr.id = it.daily_report_id
+               JOIN users u ON u.id = dr.worker_id
+               WHERE u.role = 'worker' AND u.reports_to_production_id = ?
+                 AND COALESCE(it.approved_status, 'approved') = 'pending'""",
+            (director_id,),
+        ).fetchone()[0]
+        return count
+    finally:
+        conn.close()
+
+
+def get_pending_stage_confirmations_count_for_role(role, user_id):
+    """Количество этапов, ожидающих подтверждения: дир.производства (модуль), дир.строительства (каркас/газоблок/пенополистирол)"""
+    conn = get_db()
+    try:
+        if role == "director_production":
+            cursor = conn.execute("PRAGMA table_info(stages)")
+            stage_cols = [r[1] for r in cursor.fetchall()]
+            if "stage_confirmed_at" not in stage_cols:
+                return 0
+            count = conn.execute(
+                """SELECT COUNT(*) FROM stages s
+                   JOIN projects p ON p.id = s.project_id
+                   JOIN users m ON m.id = p.master_id
+                   WHERE p.type = 'module' AND m.reports_to_production_id = ?
+                     AND (SELECT COUNT(*) FROM reports WHERE stage_id = s.id) > 0
+                     AND s.stage_confirmed_at IS NULL""",
+                (user_id,),
+            ).fetchone()[0]
+        elif role in ("director_construction", "admin"):
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='stage_completions'")
+            if not cursor.fetchone():
+                return 0
+            count = conn.execute(
+                """SELECT COUNT(*) FROM stage_completions sc
+                   JOIN stages s ON s.id = sc.stage_id
+                   JOIN projects p ON p.id = s.project_id
+                   WHERE p.type IN ('frame', 'gasblock', 'penopolistirol') AND sc.status = 'pending'""",
+            ).fetchone()[0]
+        else:
+            return 0
+        return count
+    finally:
+        conn.close()
+
+
 def get_pending_document_approvals_count_for_admin():
     """Количество документов (договор/смета), ожидающих одобрения админом"""
     conn = get_db()
@@ -2737,6 +3121,16 @@ def inject_notifications():
     result = {}
     if role in ("admin", "director_production", "director_construction"):
         result["pending_edit_requests_count"] = get_pending_edit_requests_count_for_role(role)
+    if role in ("admin", "director_production", "director_construction"):
+        result["pending_stage_confirmations_count"] = get_pending_stage_confirmations_count_for_role(
+            role, session["user_id"]
+        )
+    if role == "master":
+        result["pending_work_approvals_count"] = get_pending_work_approvals_count_for_master(session["user_id"])
+    if role == "director_production":
+        result["pending_work_approvals_count"] = get_pending_work_approvals_count_for_director_production(
+            session["user_id"]
+        )
     if role == "admin":
         result["pending_document_approvals_count"] = get_pending_document_approvals_count_for_admin()
         result["pending_takeover_requests_count"] = get_pending_takeover_requests_count()
@@ -3067,7 +3461,7 @@ def admin_dashboard():
     )
 
 
-# Связи ролей: подчинение, отчётность, обязанности (для страницы супер-админа)
+# Связи ролей: подчинение, отчётность, обязанности и права (для страницы /admin/roles)
 ROLES_HIERARCHY = {
     "super": {
         "label": "Супер-админ",
@@ -3077,20 +3471,31 @@ ROLES_HIERARCHY = {
             "Полный доступ ко всей системе",
             "Вход под любым пользователем (impersonation)",
             "Создание и удаление администраторов",
-            "Управление всеми пользователями",
+            "Редактирование ролей пользователей (admin не может)",
+            "Управление всеми пользователями и настройками",
+        ],
+        "rights": [
+            "Все права администратора + impersonation, создание/удаление админов",
         ],
     },
     "admin": {
         "label": "Администратор",
         "reports_to": "Супер-админ",
-        "reports_via": "Подчиняется супер-админу (не видно в интерфейсе)",
+        "reports_via": "Подчиняется супер-админу",
         "duties": [
-            "Проекты, пользователи, этапы, заявки на редактирование",
-            "Назначение ролей и руководителей: reports_to_id / reports_to_production_id / reports_to_construction_id",
-            "Настройка модульных доступов к отчётам по каждому пользователю (модули + страницы)",
-            "Производственный календарь, отчёты работников и прорабов, amoCRM-отчёты",
-            "Справочник работ, чат проектов",
-            "Не может создавать других администраторов",
+            "Проекты: создание, редактирование, удаление (все проекты)",
+            "Назначение ответственного ОП, директора по строительству",
+            "Этапы: добавление, удаление, редактирование дат (только admin/superadmin)",
+            "Одобрение договоров и смет",
+            "Одобрение заявок на взятие проекта, заявок на редактирование этапов",
+            "Подтверждение/отклонение этапов (модуль, каркас, газоблок, пенополистирол)",
+            "Пользователи: создание, редактирование (кроме супер-админа)",
+            "Справочник работ, этапов стройки на участке",
+            "Производственный календарь, отчёты работников и прорабов",
+            "Чат проектов, amoCRM-отчёты по модульным правам",
+        ],
+        "rights": [
+            "Проекты: все; Этапы: все; Даты этапов: да (manager_op — нет); Документы: одобрение; Заявки: все; Пользователи: да (кроме super)",
         ],
     },
     "manager_op": {
@@ -3098,12 +3503,16 @@ ROLES_HIERARCHY = {
         "reports_to": "Администратор",
         "reports_via": "Назначается администратором",
         "duties": [
-            "Создание новых проектов",
-            "Загрузка фото, договоров, смет",
-            "Прописание этапов работ с датами начала и окончания",
-            "Производственный календарь",
-            "Отчёты amoCRM по назначенным модульным правам (лиды, проекты, источники, TV)",
-            "Заявки на взятие проекта при неактивности ответственного ОП",
+            "Создание проектов (становится ответственным)",
+            "Редактирование своих проектов: название, тип, адрес, заказчик, мастер, фото",
+            "Загрузка договора и сметы",
+            "Этапы: добавление, удаление, названия (даты — только admin/superadmin)",
+            "Производственный календарь: только свои проекты",
+            "Чат проектов: свои проекты",
+            "Запрос на взятие проекта (если ответственный неактивен > 7 дней)",
+        ],
+        "rights": [
+            "Проекты: свои (created_by или responsible_manager); Даты этапов: нет; Документы: загрузка (одобрение — admin)",
         ],
     },
     "rop": {
@@ -3113,8 +3522,11 @@ ROLES_HIERARCHY = {
         "duties": [
             "Управление отделом продаж",
             "Контроль работы менеджеров ОП",
-            "Просмотр и контроль amoCRM-отчётов по назначенным правам",
+            "Просмотр amoCRM-отчётов по назначенным правам",
             "Анализ воронки продаж и источников лидов",
+        ],
+        "rights": [
+            "Проекты: по модульным правам; amoCRM: по назначенным страницам",
         ],
     },
     "marketer": {
@@ -3123,9 +3535,11 @@ ROLES_HIERARCHY = {
         "reports_via": "Назначается администратором",
         "duties": [
             "Аналитика источников лидов и маркетинговых кампаний",
-            "Работа с недельным/месячным отчётом по источникам лидов",
+            "Недельный/месячный отчёт по источникам лидов",
             "Просмотр amoCRM-отчётов по назначенным правам",
-            "Подготовка маркетинговых KPI и предложений по оптимизации",
+        ],
+        "rights": [
+            "amoCRM: по назначенным страницам",
         ],
     },
     "director_production": {
@@ -3133,35 +3547,50 @@ ROLES_HIERARCHY = {
         "reports_to": "Администратор",
         "reports_via": "Назначается в карточке пользователя",
         "duties": [
+            "Только модульные дома: проекты мастеров своего направления (reports_to_production_id)",
+            "Назначение объектов работникам (worker_project_access)",
+            "Подтверждение % выполнения работ работников",
+            "Подтверждение этапов модульных домов",
             "Заявки на редактирование от мастеров",
-            "Подтверждение % выполнения работ работников направления",
-            "Подтверждение этапов модульных домов (мастер отчитался)",
-            "Назначение объектов работникам (мастера и работники направления)",
-            "Просмотр отчётов работников по доступу модуля worker_reports",
+            "Отчёты работников, производственный календарь (модуль), чат проектов",
         ],
         "subordinates": "Мастера (reports_to_production_id), работники (reports_to_production_id)",
+        "rights": [
+            "Проекты: type=module, master.reports_to_production_id=user; Этапы: подтверждение модуль",
+        ],
     },
     "director_construction": {
-        "label": "Директор строительства на участке",
+        "label": "Директор по строительству на участке",
         "reports_to": "Администратор",
         "reports_via": "Назначается в карточке пользователя",
         "duties": [
-            "Заявки на редактирование и отчёты от прорабов",
-            "Подтверждение этапов каркасных/газобетонных/пенополистиролбетонных объектов",
-            "Назначение объектов прорабам направления",
-            "Просмотр отчётов прорабов по доступу модуля foreman_reports",
+            "ВСЕ проекты каркас/газоблок/пенополистирол (без ограничения по назначению)",
+            "Назначение любого прораба на любой объект строительства",
+            "Подтверждение/отклонение этапов (с комментарием при отклонении)",
+            "Отчёты прорабов: все прорабы, все объекты",
+            "Производственный календарь: все строительные объекты",
+            "Чат проектов: все каркас/газоблок/пенополистирол",
+            "Заявки на редактирование от прорабов",
         ],
-        "subordinates": "Прорабы (reports_to_construction_id)",
+        "subordinates": "Прорабы (reports_to_construction_id — для отчётности)",
+        "rights": [
+            "Проекты: ВСЕ frame/gasblock/penopolistirol; Этапы: подтверждение/отклонение",
+        ],
     },
     "foreman": {
         "label": "Прораб",
         "reports_to": "Директор по строительству",
         "reports_via": "reports_to_construction_id",
         "duties": [
-            "Объекты, назначенные директором по строительству",
+            "Объекты, назначенные директором (foreman_project_access)",
+            "Закрытие подэтапов: минимум 3 фото, комментарий, чек-лист (если есть)",
+            "Отправка этапа на проверку (когда все подэтапы закрыты)",
             "Закрытие рабочего дня (работы + % + комментарий)",
             "Заявки на редактирование этапов",
-            "Отчёты попадают в календарь и отчёт foreman_reports",
+            "Чат проекта",
+        ],
+        "rights": [
+            "Проекты: назначенные; Подэтапы: закрытие по одному; Этап: отправка на проверку директору",
         ],
     },
     "master": {
@@ -3169,22 +3598,30 @@ ROLES_HIERARCHY = {
         "reports_to": "Директор по производству",
         "reports_via": "reports_to_production_id",
         "duties": [
-            "Свои объекты, добавление отчётов по этапам",
-            "Заявки на редактирование этапов",
+            "Только модульные объекты (master_id = user, type = module)",
+            "Получение и подтверждение отчётов работников",
+            "Добавление отчётов по этапам (фото + комментарий)",
             "Подтверждение этапов модульных домов (после отчёта)",
-            "Назначение объектов работникам, чат проекта",
-            "Просмотр отчётов работников по доступу модуля worker_reports",
+            "Назначение объектов работникам (worker_project_access)",
+            "Заявки на редактирование этапов",
+            "Чат проекта",
         ],
         "subordinates": "Работники (reports_to_id)",
+        "rights": [
+            "Проекты: только модульные (master_id=user); Этапы: отчёты, подтверждение",
+        ],
     },
     "worker": {
         "label": "Работник",
         "reports_to": "Мастер",
         "reports_via": "reports_to_id",
         "duties": [
-            "Закрытие дня: работа + % выполнения + комментарий",
-            "Видит объекты мастера, отчитывается перед ним",
+            "Только модульные объекты, назначенные мастером или директором по производству (worker_project_access)",
+            "Закрытие дня: работа + % + комментарий",
             "Подтверждение % — мастер или директор по производству",
+        ],
+        "rights": [
+            "Проекты: только модульные, назначенные мастером/директором; Закрытие дня: да",
         ],
     },
     "client": {
@@ -3192,8 +3629,12 @@ ROLES_HIERARCHY = {
         "reports_to": None,
         "reports_via": None,
         "duties": [
-            "Просмотр своих объектов и прогресса этапов",
-            "Подтверждение договора и сметы (после загрузки менеджером ОП)",
+            "Просмотр своих объектов (client_id = user)",
+            "Просмотр прогресса этапов и фото отчётов",
+            "Подтверждение договора и сметы (после одобрения админом)",
+        ],
+        "rights": [
+            "Проекты: client_id=user; Только просмотр; Документы: подтверждение",
         ],
     },
 }
@@ -3512,14 +3953,14 @@ def admin_user_edit(user_id):
 
 
 @app.route("/manager-op")
-@projects_manager_required
+@admin_or_manager_op_required
 def manager_op_dashboard():
     """Дашборд менеджера ОП: проекты и производственный календарь"""
     return redirect(url_for("admin_projects"))
 
 
 @app.route("/manager-op/takeover", methods=["GET", "POST"])
-@projects_manager_required
+@admin_or_manager_op_required
 def manager_op_takeover():
     """Запрос на взятие проекта: менеджер ОП видит проекты без активного ответственного > N дней"""
     if session.get("role") != "manager_op":
@@ -3696,7 +4137,7 @@ def admin_takeover_requests():
 
 
 @app.route("/admin/projects", methods=["GET", "POST"])
-@projects_manager_required
+@admin_or_manager_op_required
 def admin_projects():
     """Управление проектами"""
     conn = get_db()
@@ -3739,6 +4180,47 @@ def admin_projects():
                            VALUES (?, ?, ?)""",
                         (master_id, project_id, user_id if role == "admin" else None),
                     )
+                # Создать этапы из справочника по направлению
+                if building_type in ("frame", "gasblock", "penopolistirol"):
+                    stage_tpl = conn.execute(
+                        """SELECT id, name, order_num FROM construction_stage_templates
+                           WHERE building_type = ? ORDER BY order_num""",
+                        (building_type,),
+                    ).fetchall()
+                    stage_cols = [r[1] for r in conn.execute("PRAGMA table_info(stages)").fetchall()]
+                    has_tpl = "stage_template_id" in stage_cols
+                    for row in stage_tpl:
+                        if has_tpl:
+                            conn.execute(
+                                """INSERT INTO stages (project_id, name, order_num, stage_template_id)
+                                   VALUES (?, ?, ?, ?)""",
+                                (project_id, row["name"], row["order_num"], row["id"]),
+                            )
+                        else:
+                            conn.execute(
+                                "INSERT INTO stages (project_id, name, order_num) VALUES (?, ?, ?)",
+                                (project_id, row["name"], row["order_num"]),
+                            )
+                        stage_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                        # Создать подэтапы из справочника (если есть) или один «виртуальный» подэтап
+                        substage_tpl = conn.execute(
+                            """SELECT id, name, order_num FROM construction_substage_templates
+                               WHERE stage_template_id = ? ORDER BY order_num""",
+                            (row["id"],),
+                        ).fetchall()
+                        if substage_tpl:
+                            for sub in substage_tpl:
+                                conn.execute(
+                                    """INSERT INTO project_substages (stage_id, substage_template_id, name, order_num)
+                                       VALUES (?, ?, ?, ?)""",
+                                    (stage_id, sub["id"], sub["name"], sub["order_num"]),
+                                )
+                        else:
+                            conn.execute(
+                                """INSERT INTO project_substages (stage_id, substage_template_id, name, order_num)
+                                   VALUES (?, NULL, ?, 1)""",
+                                (stage_id, row["name"]),
+                            )
                 conn.execute(
                     "UPDATE projects SET last_responsible_activity_at = CURRENT_TIMESTAMP WHERE id = ?",
                     (project_id,),
@@ -3870,7 +4352,7 @@ def admin_projects():
 
 
 @app.route("/admin/project/<int:project_id>/edit", methods=["GET", "POST"])
-@projects_manager_required
+@admin_or_manager_op_required
 def admin_project_edit(project_id):
     """Редактирование проекта"""
     conn = get_db()
@@ -4095,7 +4577,7 @@ def admin_project_edit(project_id):
 
 
 @app.route("/admin/project/<int:project_id>/delete", methods=["POST"])
-@projects_manager_required
+@admin_or_manager_op_required
 def admin_project_delete(project_id):
     """Удаление проекта"""
     conn = get_db()
@@ -4106,7 +4588,7 @@ def admin_project_delete(project_id):
         return redirect(url_for("admin_projects"))
     if session.get("role") == "manager_op":
         uid = session["user_id"]
-        if proj.get("created_by_id") != uid and proj.get("responsible_manager_id") != uid:
+        if proj["created_by_id"] != uid and proj["responsible_manager_id"] != uid:
             conn.close()
             flash("Доступ запрещён: это не ваш проект.", "error")
             return redirect(url_for("admin_projects"))
@@ -4131,6 +4613,9 @@ def admin_project_delete(project_id):
     conn.execute("DELETE FROM project_chat WHERE project_id = ?", (project_id,))
     conn.execute("DELETE FROM project_takeover_requests WHERE project_id = ?", (project_id,))
     conn.execute("DELETE FROM reports WHERE stage_id IN (SELECT id FROM stages WHERE project_id = ?)", (project_id,))
+    conn.execute("DELETE FROM substage_completions WHERE project_substage_id IN (SELECT id FROM project_substages WHERE stage_id IN (SELECT id FROM stages WHERE project_id = ?))", (project_id,))
+    conn.execute("DELETE FROM project_substages WHERE stage_id IN (SELECT id FROM stages WHERE project_id = ?)", (project_id,))
+    conn.execute("DELETE FROM stage_completions WHERE stage_id IN (SELECT id FROM stages WHERE project_id = ?)", (project_id,))
     conn.execute("DELETE FROM stages WHERE project_id = ?", (project_id,))
     conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
     conn.commit()
@@ -4140,7 +4625,7 @@ def admin_project_delete(project_id):
 
 
 @app.route("/admin/project/<int:project_id>/stages", methods=["GET", "POST"])
-@projects_manager_required
+@admin_or_manager_op_or_director_construction_required
 def admin_project_stages(project_id):
     """Настройка этапов проекта"""
     conn = get_db()
@@ -4157,10 +4642,15 @@ def admin_project_stages(project_id):
         return redirect(url_for("admin_projects"))
     if session.get("role") == "manager_op":
         uid = session["user_id"]
-        if proj.get("created_by_id") != uid and proj.get("responsible_manager_id") != uid:
+        if proj["created_by_id"] != uid and proj["responsible_manager_id"] != uid:
             conn.close()
             flash("Доступ запрещён: это не ваш проект.", "error")
             return redirect(url_for("admin_projects"))
+    elif session.get("role") == "director_construction":
+        if proj["type"] not in ("frame", "gasblock", "penopolistirol"):
+            conn.close()
+            flash("Доступ только к проектам каркас/газоблок/пенополистирол.", "error")
+            return redirect(url_for("director_construction_dashboard"))
     project = dict(proj)
     try:
         project["photo_token"] = get_active_media_tokens_map("project_photo", [int(project_id)]).get(int(project_id))
@@ -4168,6 +4658,10 @@ def admin_project_stages(project_id):
         project["photo_token"] = None
 
     if request.method == "POST":
+        if session.get("role") == "director_construction":
+            conn.close()
+            flash("Директор по строительству может только просматривать этапы и подтверждать.", "info")
+            return redirect(url_for("admin_project_stages", project_id=project_id))
         action = request.form.get("action")
         if action == "add":
             name = request.form.get("stage_name", "").strip()
@@ -4216,6 +4710,7 @@ def admin_project_stages(project_id):
             cursor.execute("PRAGMA table_info(stages)")
             stage_cols = [r[1] for r in cursor.fetchall()]
             has_start_end = "planned_start_date" in stage_cols and "planned_end_date" in stage_cols
+            can_edit_dates = session.get("role") == "admin" or is_superadmin(session.get("user_id"))
             for key in request.form:
                 if key.startswith("stage_") and not key.startswith("stage_planned_"):
                     try:
@@ -4225,11 +4720,16 @@ def admin_project_stages(project_id):
                         planned_start = request.form.get(f"stage_planned_start_{stage_id}", "").strip() or None
                         planned_end = request.form.get(f"stage_planned_end_{stage_id}", "").strip() or None
                         if new_name:
-                            if has_start_end:
+                            if has_start_end and can_edit_dates:
                                 cur = conn.execute(
                                     """UPDATE stages SET name = ?, planned_date = ?, planned_start_date = ?, planned_end_date = ?
                                        WHERE id = ? AND project_id = ?""",
                                     (new_name, planned_date, planned_start or None, planned_end or None, stage_id, project_id),
+                                )
+                            elif has_start_end and not can_edit_dates:
+                                cur = conn.execute(
+                                    "UPDATE stages SET name = ? WHERE id = ? AND project_id = ?",
+                                    (new_name, stage_id, project_id),
                                 )
                             else:
                                 cur = conn.execute(
@@ -4317,8 +4817,22 @@ def admin_project_stages(project_id):
             (project_id, s["id"]),
         ).fetchall()
         stage_chat[s["id"]] = [dict(m) for m in msgs]
+    # Ожидающие подтверждения от прораба (stage_completions) — только для каркас/газоблок/пенополистирол
+    has_sc = bool(conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='stage_completions'").fetchone())
+    show_pending = has_sc and project.get("type") in ("frame", "gasblock", "penopolistirol")
+    for s in stages:
+        s["pending_completion"] = None
+        if show_pending:
+            sc = conn.execute(
+                "SELECT id, comment FROM stage_completions WHERE stage_id = ? AND status = 'pending'",
+                (s["id"],),
+            ).fetchone()
+            if sc:
+                s["pending_completion"] = dict(sc)
+    can_edit_dates = session.get("role") == "admin" or is_superadmin(session.get("user_id"))
+    can_edit_stages = session.get("role") != "director_construction"
     conn.close()
-    return render_template("admin/stages.html", project=project, stages=stages, stage_chat=stage_chat, building_types=BUILDING_TYPES)
+    return render_template("admin/stages.html", project=project, stages=stages, stage_chat=stage_chat, building_types=BUILDING_TYPES, can_edit_dates=can_edit_dates, can_edit_stages=can_edit_stages)
 
 
 def _parse_date(s):
@@ -4419,38 +4933,16 @@ def _build_production_calendar_projects(conn, project_filter="all", director_use
             (director_user_id,),
         ).fetchall()
     elif project_filter == "construction" and director_user_id:
-        proj_cols = [r[1] for r in conn.execute("PRAGMA table_info(projects)").fetchall()]
-        if "director_construction_id" in proj_cols:
-            projects_raw = conn.execute(
-                """SELECT p.id, p.name, p.address, p.type, p.created_at,
-                      (SELECT u2.full_name FROM foreman_project_access fpa2
-                       JOIN users u2 ON u2.id = fpa2.foreman_id
-                       WHERE fpa2.project_id = p.id LIMIT 1) as master_name
-                   FROM projects p
-                   WHERE p.type IN ('frame', 'gasblock', 'penopolistirol')
-                     AND (p.director_construction_id = ?
-                          OR EXISTS (
-                              SELECT 1 FROM foreman_project_access fpa
-                              JOIN users u ON u.id = fpa.foreman_id
-                              WHERE fpa.project_id = p.id AND u.reports_to_construction_id = ?
-                          ))
-                   ORDER BY p.name""",
-                (director_user_id, director_user_id),
-            ).fetchall()
-        else:
-            projects_raw = conn.execute(
-                """SELECT DISTINCT p.id, p.name, p.address, p.type, p.created_at,
-                      (SELECT u2.full_name FROM foreman_project_access fpa2
-                       JOIN users u2 ON u2.id = fpa2.foreman_id
-                       WHERE fpa2.project_id = p.id LIMIT 1) as master_name
-                   FROM projects p
-                   JOIN foreman_project_access fpa ON fpa.project_id = p.id
-                   JOIN users u ON u.id = fpa.foreman_id
-                   WHERE p.type IN ('frame', 'gasblock', 'penopolistirol')
-                     AND u.reports_to_construction_id = ?
-                   ORDER BY p.name""",
-                (director_user_id,),
-            ).fetchall()
+        # Директор по строительству видит ВСЕ проекты каркас/газоблок/пенополистирол
+        projects_raw = conn.execute(
+            """SELECT p.id, p.name, p.address, p.type, p.created_at,
+                  (SELECT u2.full_name FROM foreman_project_access fpa2
+                   JOIN users u2 ON u2.id = fpa2.foreman_id
+                   WHERE fpa2.project_id = p.id LIMIT 1) as master_name
+               FROM projects p
+               WHERE p.type IN ('frame', 'gasblock', 'penopolistirol')
+               ORDER BY p.name"""
+        ).fetchall()
     else:
         projects_raw = conn.execute(
             """SELECT p.id, p.name, p.address, p.type, p.created_at, u.full_name as master_name
@@ -4783,7 +5275,7 @@ def _build_module_production_analytics(conn, director_user_id=None):
 
 
 @app.route("/admin/calendar")
-@projects_manager_required
+@admin_or_manager_op_required
 def admin_production_calendar():
     """Производственный календарь: все проекты (админ) или только свои (менеджер ОП)"""
     conn = get_db()
@@ -5158,8 +5650,15 @@ MODULE_PLAN_CATEGORIES = [
     ("gazoblock_site", "Газоблочное строительство на участке"),
     ("prefab_beton_site", "Префаб/бетон на участке"),
 ]
+ONSITE_BUILD_CATEGORY_KEYS = ("frame_site", "gazoblock_site", "prefab_beton_site")
+MODULE_PLAN_GROUP_CATEGORIES = [
+    ("modular", "Модульные"),
+    ("onsite_total", "Каркас/газоблок/пенополистиролбетон"),
+]
 
 MODULE_TO_SQM = 18.0
+PLAN_PRICE_MODULAR_PER_SQM = 65_000.0
+PLAN_PRICE_ONSITE_PER_SQM = 75_000.0
 
 
 def _amocrm_norm_tag_name(v):
@@ -5556,7 +6055,7 @@ def _module_category_from_project_type(project_type: str) -> str | None:
 
 def _amocrm_modules_fact_yearly_map(conn):
     projects_cache = _amocrm_cache_get(conn, "projects_sherwood_home")
-    if (not projects_cache) or int(projects_cache.get("version") or 0) < 3:
+    if (not projects_cache) or int(projects_cache.get("version") or 0) < 4:
         pr_payload, pr_err = _build_amocrm_projects_rows()
         if not pr_err and pr_payload:
             _amocrm_cache_set(conn, "projects_sherwood_home", pr_payload)
@@ -5575,37 +6074,20 @@ def _amocrm_modules_fact_yearly_map(conn):
             return None
         return None
 
-    def _to_num(v):
-        s = str(v or "").strip()
-        if not s or s == "null":
-            return 0.0
-        cleaned = []
-        for ch in s:
-            if ch.isdigit() or ch in ".,":  # игнорируем "м²", "руб.", текст и т.п.
-                cleaned.append(ch)
-        s2 = "".join(cleaned).replace(",", ".")
-        if not s2:
-            return 0.0
-        try:
-            return float(s2)
-        except Exception:
-            return 0.0
-
     out = {}
     for r in sales_rows:
         cat = _module_category_from_project_type(r.get("project_type"))
         if not cat:
             continue
-        # Для модульных домов год считаем по дате предоплаты; для остальных — по дате договора
-        if cat == "modular":
-            date_src = r.get("prepay_date") or r.get("contract_date")
-        else:
-            date_src = r.get("contract_date") or r.get("prepay_date")
-        year = _parse_year_dmy(date_src)
+        # Факт считаем только по дате заключения договора.
+        year = _parse_year_dmy(r.get("contract_date"))
         if not year:
             continue
+        area_sqm = _amocrm_row_house_area_sqm_strict(r)
+        if not area_sqm:
+            continue
         k = (year, cat)
-        out[k] = out.get(k, 0.0) + float(_amocrm_row_area_sqm(r) or 0.0)
+        out[k] = out.get(k, 0.0) + float(area_sqm)
     return out
 
 
@@ -5654,20 +6136,20 @@ def _ensure_demo_yearly_plan_data(conn):
 
     module_plan = _amocrm_modules_yearly_plan_map(conn)
     for y in years:
-        for cat_key, _cat_label in MODULE_PLAN_CATEGORIES:
-            if (y, cat_key) in module_plan:
-                continue
-            if y in (2024, 2025):
-                plan_units = 160.0 if cat_key == "modular" else 0.0
+        if (y, "modular") not in module_plan:
+            plan_units = 160.0 if y in (2024, 2025) else 220.0
+            _amocrm_modules_yearly_plan_upsert(conn, y, "modular", plan_units)
+            changed = True
+
+        if (y, "onsite_total") not in module_plan:
+            legacy_sum = sum(float(module_plan.get((y, k)) or 0.0) for k in ONSITE_BUILD_CATEGORY_KEYS)
+            if legacy_sum > 0:
+                onsite_units = legacy_sum
+            elif y in (2024, 2025):
+                onsite_units = 0.0
             else:
-                defaults_2026 = {
-                    "modular": 220.0,
-                    "frame_site": 80.0,
-                    "gazoblock_site": 70.0,
-                    "prefab_beton_site": 60.0,
-                }
-                plan_units = defaults_2026.get(cat_key, 0.0)
-            _amocrm_modules_yearly_plan_upsert(conn, y, cat_key, plan_units)
+                onsite_units = 80.0 + 70.0 + 60.0
+            _amocrm_modules_yearly_plan_upsert(conn, y, "onsite_total", onsite_units)
             changed = True
 
     return changed
@@ -5908,7 +6390,7 @@ def _ensure_demo_foreman_reports(conn):
 
 def _amocrm_sales_fact_month_map(conn):
     projects_cache = _amocrm_cache_get(conn, "projects_sherwood_home")
-    if (not projects_cache) or int(projects_cache.get("version") or 0) < 3:
+    if (not projects_cache) or int(projects_cache.get("version") or 0) < 4:
         pr_payload, pr_err = _build_amocrm_projects_rows()
         if not pr_err and pr_payload:
             _amocrm_cache_set(conn, "projects_sherwood_home", pr_payload)
@@ -5947,20 +6429,15 @@ def _amocrm_sales_fact_month_map(conn):
 
     fact = {}
     for r in sales_rows:
-        # По модульным домам месяц продажи считаем по дате предоплаты,
-        # по остальным типам — по дате заключения договора.
-        cat = _module_category_from_project_type(r.get("project_type"))
-        if cat == "modular":
-            date_src = r.get("prepay_date") or r.get("contract_date")
-        else:
-            date_src = r.get("contract_date") or r.get("prepay_date")
-        mk = _parse_dmy_to_month(date_src)
+        # Месяц продажи считаем только по дате заключения договора.
+        mk = _parse_dmy_to_month(r.get("contract_date"))
         if not mk:
             continue
         rec = fact.setdefault(mk, {"sold_count": 0.0, "sold_deals": 0, "sold_area": 0.0, "sold_amount": 0.0})
+        area_sqm = _amocrm_row_house_area_sqm_strict(r)
         rec["sold_deals"] += 1
         rec["sold_count"] += 1.0
-        rec["sold_area"] += float(_amocrm_row_area_sqm(r) or 0.0)
+        rec["sold_area"] += float(area_sqm or 0.0)
         rec["sold_amount"] += _to_num(r.get("contract_total"))
     return fact
 
@@ -6116,7 +6593,7 @@ def _build_amocrm_sources_dashboard_payload(conn):
 
     # --- Sales block (fact + manual monthly plan) ---
     projects_cache = _amocrm_cache_get(conn, "projects_sherwood_home")
-    if (not projects_cache) or int(projects_cache.get("version") or 0) < 3:
+    if (not projects_cache) or int(projects_cache.get("version") or 0) < 4:
         pr_payload, pr_err = _build_amocrm_projects_rows()
         if not pr_err and pr_payload:
             _amocrm_cache_set(conn, "projects_sherwood_home", pr_payload)
@@ -6158,25 +6635,32 @@ def _build_amocrm_sources_dashboard_payload(conn):
         pm_raw = str(r.get("payment_method") or "null").strip()
         payment_totals[pm_raw or "null"] = payment_totals.get(pm_raw or "null", 0.0) + amount
 
-        # По модульным домам месяц продажи считаем по дате предоплаты,
-        # по остальным типам — по дате заключения договора.
+        # Факт продаж по месяцам: только дата заключения договора + площадь дома + проект.
         cat = _module_category_from_project_type(r.get("project_type"))
-        if cat == "modular":
-            date_src = r.get("prepay_date") or r.get("contract_date")
-        else:
-            date_src = r.get("contract_date") or r.get("prepay_date")
-        sold_m = _parse_dmy_to_month(date_src)
+        sold_m = _parse_dmy_to_month(r.get("contract_date"))
         if sold_m:
             key = sold_m.isoformat()
             rec = sales_by_month.setdefault(
                 key,
-                {"month_start": key, "sold_count": 0.0, "sold_deals": 0, "sold_amount": 0.0, "sold_area": 0.0},
+                {
+                    "month_start": key,
+                    "sold_count": 0.0,
+                    "sold_deals": 0,
+                    "sold_amount": 0.0,
+                    "sold_area": 0.0,
+                    "sold_area_modular": 0.0,
+                    "sold_area_onsite_total": 0.0,
+                },
             )
-            row_area_sqm = float(_amocrm_row_area_sqm(r) or 0.0)
+            row_area_sqm = float(_amocrm_row_house_area_sqm_strict(r) or 0.0)
             rec["sold_deals"] += 1
             rec["sold_count"] += row_area_sqm
             rec["sold_amount"] += amount
             rec["sold_area"] += row_area_sqm
+            if cat == "modular":
+                rec["sold_area_modular"] += row_area_sqm
+            else:
+                rec["sold_area_onsite_total"] += row_area_sqm
 
             if min_sales_month is None or sold_m < min_sales_month:
                 min_sales_month = sold_m
@@ -6187,10 +6671,25 @@ def _build_amocrm_sources_dashboard_payload(conn):
         plan_m = _parse_dmy_to_month(r.get("delivery_date")) or _parse_dmy_to_month(r.get("prod_end"))
         if plan_m and plan_m >= cur_month:
             keyp = plan_m.isoformat()
-            recp = plan_by_month.setdefault(keyp, {"month_start": keyp, "plan_count": 0, "plan_area": 0.0, "plan_amount": 0.0})
+            recp = plan_by_month.setdefault(
+                keyp,
+                {
+                    "month_start": keyp,
+                    "plan_count": 0,
+                    "plan_area": 0.0,
+                    "plan_amount": 0.0,
+                    "plan_area_modular": 0.0,
+                    "plan_area_onsite_total": 0.0,
+                },
+            )
+            plan_area_sqm = float(_amocrm_row_house_area_sqm_strict(r) or 0.0)
             recp["plan_count"] += 1
-            recp["plan_area"] += float(_amocrm_row_area_sqm(r) or 0.0)
+            recp["plan_area"] += plan_area_sqm
             recp["plan_amount"] += amount
+            if cat == "modular":
+                recp["plan_area_modular"] += plan_area_sqm
+            else:
+                recp["plan_area_onsite_total"] += plan_area_sqm
             if max_sales_month is None or plan_m > max_sales_month:
                 max_sales_month = plan_m
             if min_sales_month is None or plan_m < min_sales_month:
@@ -6205,6 +6704,16 @@ def _build_amocrm_sources_dashboard_payload(conn):
             min_sales_month = dm
         if max_sales_month is None or dm > max_sales_month:
             max_sales_month = dm
+
+    modules_plan_map = _amocrm_modules_yearly_plan_map(conn)
+    plan_years = sorted({int(y) for (y, _c) in modules_plan_map.keys()})
+    for y in plan_years:
+        y_start = date(y, 1, 1)
+        y_end = date(y, 12, 1)
+        if min_sales_month is None or y_start < min_sales_month:
+            min_sales_month = y_start
+        if max_sales_month is None or y_end > max_sales_month:
+            max_sales_month = y_end
 
     sales_months = []
     if min_sales_month and max_sales_month:
@@ -6232,6 +6741,12 @@ def _build_amocrm_sources_dashboard_payload(conn):
                     "sold_deals": int(sold.get("sold_deals") or 0),
                     "sold_amount": float(sold.get("sold_amount") or 0.0),
                     "sold_area": float(sold.get("sold_area") or 0.0),
+                    "sold_area_modular": float(sold.get("sold_area_modular") or 0.0),
+                    "sold_area_onsite_total": float(sold.get("sold_area_onsite_total") or 0.0),
+                    # Для помесячного разреза по направлениям берём план из pipeline (delivery/prod_end).
+                    # Ручной monthly plan в БД остаётся для общего KPI plan_area/plan_amount.
+                    "plan_area_modular": float(plan.get("plan_area_modular") or 0.0),
+                    "plan_area_onsite_total": float(plan.get("plan_area_onsite_total") or 0.0),
                     "plan_count": int(plan_count if plan_count is not None else (plan.get("plan_count") or 0)),
                     "plan_area": float(
                         (
@@ -6244,27 +6759,63 @@ def _build_amocrm_sources_dashboard_payload(conn):
                 }
             )
 
+    def _annual_plan_units(year: int, bucket_key: str) -> tuple[float, bool]:
+        if bucket_key == "modular":
+            k = (int(year), "modular")
+            return float(modules_plan_map.get(k) or 0.0), (k in modules_plan_map)
+        if bucket_key == "onsite_total":
+            direct_key = (int(year), "onsite_total")
+            if direct_key in modules_plan_map:
+                return float(modules_plan_map.get(direct_key) or 0.0), True
+            legacy_sum = sum(float(modules_plan_map.get((int(year), ck)) or 0.0) for ck in ONSITE_BUILD_CATEGORY_KEYS)
+            return legacy_sum, bool(legacy_sum)
+        return 0.0, False
+
+    for month_row in sales_months:
+        year_val = int(month_row.get("year") or 0)
+        mod_units, has_mod_plan = _annual_plan_units(year_val, "modular")
+        onsite_units, has_onsite_plan = _annual_plan_units(year_val, "onsite_total")
+        # Плановая сумма в графике "Продажи: сумма по месяцам" рассчитывается
+        # только от годового плана по м² и равномерно делится на 12 месяцев.
+        # Это гарантирует ровную линию плана внутри каждого года.
+        plan_area_mod = (float(mod_units or 0.0) * MODULE_TO_SQM) / 12.0
+        plan_area_onsite = (float(onsite_units or 0.0) * MODULE_TO_SQM) / 12.0
+        month_row["plan_area_modular"] = plan_area_mod
+        month_row["plan_area_onsite_total"] = plan_area_onsite
+        month_row["plan_area"] = plan_area_mod + plan_area_onsite
+        month_row["plan_amount"] = (
+            plan_area_mod * PLAN_PRICE_MODULAR_PER_SQM
+            + plan_area_onsite * PLAN_PRICE_ONSITE_PER_SQM
+        )
+
     sales_totals = {
         "sold_count": sum(float(m.get("sold_count") or 0.0) for m in sales_months),
         "sold_deals": sum(int(m.get("sold_deals") or 0) for m in sales_months),
         "sold_amount": sum(float(m.get("sold_amount") or 0.0) for m in sales_months),
         "sold_area": sum(float(m.get("sold_area") or 0.0) for m in sales_months),
+        "sold_area_modular": sum(float(m.get("sold_area_modular") or 0.0) for m in sales_months),
+        "sold_area_onsite_total": sum(float(m.get("sold_area_onsite_total") or 0.0) for m in sales_months),
+        "plan_area_modular": sum(float(m.get("plan_area_modular") or 0.0) for m in sales_months),
+        "plan_area_onsite_total": sum(float(m.get("plan_area_onsite_total") or 0.0) for m in sales_months),
         "plan_count": sum(int(m.get("plan_count") or 0) for m in sales_months),
         "plan_area": sum(float(m.get("plan_area") or 0.0) for m in sales_months),
         "plan_amount": sum(float(m.get("plan_amount") or 0.0) for m in sales_months),
         "by_payment": {k: float(v) for k, v in payment_totals.items()},
     }
 
-    modules_plan_map = _amocrm_modules_yearly_plan_map(conn)
     modules_fact_map = _amocrm_modules_fact_yearly_map(conn)
-    category_labels = {k: v for k, v in MODULE_PLAN_CATEGORIES}
+    category_labels = {k: v for k, v in MODULE_PLAN_GROUP_CATEGORIES}
     module_years = sorted({y for (y, _c) in modules_plan_map.keys()} | {y for (y, _c) in modules_fact_map.keys()})
     modules_yearly = []
     for y in module_years:
         cats = []
-        for cat_key, cat_label in MODULE_PLAN_CATEGORIES:
-            plan_units = float(modules_plan_map.get((y, cat_key)) or 0.0) * MODULE_TO_SQM
-            fact_units = float(modules_fact_map.get((y, cat_key)) or 0.0)
+        for cat_key, cat_label in MODULE_PLAN_GROUP_CATEGORIES:
+            plan_units_raw, _has_plan = _annual_plan_units(y, cat_key)
+            if cat_key == "modular":
+                fact_units = float(modules_fact_map.get((y, "modular")) or 0.0)
+            else:
+                fact_units = sum(float(modules_fact_map.get((y, ck)) or 0.0) for ck in ONSITE_BUILD_CATEGORY_KEYS)
+            plan_units = plan_units_raw * MODULE_TO_SQM
             cats.append(
                 {
                     "key": cat_key,
@@ -6283,10 +6834,10 @@ def _build_amocrm_sources_dashboard_payload(conn):
         "sources": AMOCRM_SOURCE_TAGS,
         "totals": totals,  # marketing totals
         "sales_totals": sales_totals,
-        "module_categories": [{"key": k, "label": category_labels.get(k, k)} for k, _ in MODULE_PLAN_CATEGORIES],
+        "module_categories": [{"key": k, "label": category_labels.get(k, k)} for k, _ in MODULE_PLAN_GROUP_CATEGORIES],
         "modules_yearly": modules_yearly,
         "generated_at": project_now().strftime("%d.%m.%Y %H:%M:%S"),
-        "version": 7,
+        "version": 16,
     }
     return payload, None
 
@@ -6728,8 +7279,22 @@ def amocrm_sources_report():
     module_fact_map = _amocrm_modules_fact_yearly_map(conn)
     module_plan_rows = []
     rr = 0
+
+    def _plan_units_group(year: int, category_key: str) -> float:
+        if category_key == "modular":
+            return float(module_plan_map.get((year, "modular")) or 0.0)
+        direct = module_plan_map.get((year, "onsite_total"))
+        if direct not in (None, ""):
+            return float(direct or 0.0)
+        return sum(float(module_plan_map.get((year, k)) or 0.0) for k in ONSITE_BUILD_CATEGORY_KEYS)
+
+    def _fact_sqm_group(year: int, category_key: str) -> float:
+        if category_key == "modular":
+            return float(module_fact_map.get((year, "modular")) or 0.0)
+        return sum(float(module_fact_map.get((year, k)) or 0.0) for k in ONSITE_BUILD_CATEGORY_KEYS)
+
     for y in (2024, 2025, 2026):
-        for cat_key, cat_label in MODULE_PLAN_CATEGORIES:
+        for cat_key, cat_label in MODULE_PLAN_GROUP_CATEGORIES:
             rr += 1
             module_plan_rows.append(
                 {
@@ -6737,10 +7302,8 @@ def amocrm_sources_report():
                     "year": y,
                     "category_key": cat_key,
                     "category_label": cat_label,
-                    "plan_units": (
-                        float(module_plan_map.get((y, cat_key)) or 0.0) * MODULE_TO_SQM
-                    ),
-                    "fact_units": float(module_fact_map.get((y, cat_key)) or 0.0),
+                    "plan_units": _plan_units_group(y, cat_key) * MODULE_TO_SQM,
+                    "fact_units": _fact_sqm_group(y, cat_key),
                 }
             )
     year_options = prepared["year_options"]
@@ -6846,7 +7409,7 @@ def amocrm_sources_report():
 def amocrm_sources_dashboard_data():
     conn = get_db()
     cache = _amocrm_cache_get(conn, "sources_dashboard_all_years")
-    if (not cache) or int(cache.get("version") or 0) < 7:
+    if (not cache) or int(cache.get("version") or 0) < 16:
         payload, err = _build_amocrm_sources_dashboard_payload(conn)
         if err:
             conn.close()
@@ -6899,7 +7462,7 @@ def amocrm_sources_dashboard():
     conn = get_db()
     cache = _amocrm_cache_get(conn, "sources_dashboard_all_years")
     error = None
-    if (not cache) or int(cache.get("version") or 0) < 7:
+    if (not cache) or int(cache.get("version") or 0) < 16:
         payload, err = _build_amocrm_sources_dashboard_payload(conn)
         if err:
             error = err
@@ -6913,7 +7476,7 @@ def amocrm_sources_dashboard():
                 "module_categories": [],
                 "modules_yearly": [],
                 "generated_at": None,
-                "version": 7,
+                "version": 16,
             }
         else:
             _amocrm_cache_set(conn, "sources_dashboard_all_years", payload)
@@ -7154,6 +7717,35 @@ def _amocrm_row_area_sqm(row):
     return _amocrm_modules_to_sqm(row.get("modules"), fallback_modules=modules_fallback)
 
 
+def _amocrm_row_house_area_sqm_strict(row):
+    """
+    Строгая площадь для дашборда продаж:
+    берём только поле 'Площадь дома' из CRM (без пересчёта из модулей).
+    """
+    raw = row.get("house_area")
+    house_area_num = _amocrm_parse_num(raw)
+    if house_area_num and house_area_num > 0:
+        return float(house_area_num)
+    # Поддержка значений формата "120 м²", "1 234,5", "1 234,5" и т.п.
+    s = str(raw or "").strip()
+    if not s or s == "null":
+        return None
+    cleaned = []
+    for ch in s:
+        if ch.isdigit() or ch in ".,":  # игнорируем единицы измерения и текст
+            cleaned.append(ch)
+    s2 = "".join(cleaned).replace(",", ".")
+    if not s2:
+        return None
+    try:
+        n = float(s2)
+    except Exception:
+        return None
+    if n > 0:
+        return n
+    return None
+
+
 def _amocrm_fmt_sqm(v):
     n = _amocrm_parse_num(v)
     if n is None:
@@ -7198,7 +7790,7 @@ def _build_amocrm_projects_rows():
             support_pipeline = p
             break
     if not support_pipeline:
-        return {"rows": [], "generated_at": project_now().strftime("%d.%m.%Y %H:%M:%S"), "version": 3}, None
+        return {"rows": [], "generated_at": project_now().strftime("%d.%m.%Y %H:%M:%S"), "version": 4}, None
 
     # field ids (validated on reference deal 28524885)
     CF = {
@@ -7246,6 +7838,24 @@ def _build_amocrm_projects_rows():
             return first.get("value") if isinstance(first, dict) else first
         return None
 
+    def cf_house_area_value(lead):
+        # Сначала пробуем точные имена, затем более мягкий поиск по словам "площад" + "дом".
+        v = cf_by_names(lead, ["площадь дома", "площадь дома ", "планируемая площадь", "планируемая площадь:"])
+        if v not in (None, "", "null"):
+            return v
+        for cf in (lead.get("custom_fields_values") or []):
+            nm = _amocrm_norm_tag_name(cf.get("field_name") or cf.get("field_code") or "")
+            if ("площад" not in nm) or ("дом" not in nm):
+                continue
+            vals = cf.get("values") or []
+            if not vals:
+                continue
+            first = vals[0]
+            raw = first.get("value") if isinstance(first, dict) else first
+            if raw not in (None, ""):
+                return raw
+        return None
+
     rows = []
     for lead in leads:
         if int(lead.get("pipeline_id") or 0) != int(support_pipeline.get("id") or 0):
@@ -7259,7 +7869,7 @@ def _build_amocrm_projects_rows():
             project_name = f"Без названия (сделка {lead.get('id')})"
 
         responsible = users_map.get(lead.get("responsible_user_id"), "null")
-        house_area = cf_by_names(lead, ["площадь дома", "площадь дома ", "планируемая площадь", "планируемая площадь:"])
+        house_area = cf_house_area_value(lead)
         modules_raw = cf_value(lead, CF["modules"])
         modules_sqm = _amocrm_modules_to_sqm(modules_raw, fallback_modules=1.0)
         house_area_num = _amocrm_parse_num(house_area)
@@ -7292,7 +7902,7 @@ def _build_amocrm_projects_rows():
     payload = {
         "rows": rows,
         "generated_at": project_now().strftime("%d.%m.%Y %H:%M:%S"),
-        "version": 3,
+        "version": 4,
     }
     return payload, None
 
@@ -7411,7 +8021,7 @@ def amocrm_projects_sync():
 def amocrm_projects_data():
     """JSON данные отчёта Проекты Sherwood Home из кэша."""
     conn = get_db()
-    cache = _amocrm_cache_get(conn, "projects_sherwood_home") or {"rows": [], "generated_at": None, "version": 3}
+    cache = _amocrm_cache_get(conn, "projects_sherwood_home") or {"rows": [], "generated_at": None, "version": 4}
     data = _amocrm_projects_view_data(cache, request.args)
     rows_html = render_template("reports/_amocrm_projects_rows.html", rows=data["rows"])
     kpis_html = render_template("reports/_amocrm_projects_kpis.html", summary=data["summary"])
@@ -7451,11 +8061,11 @@ def amocrm_projects_report():
     conn = get_db()
     cache = _amocrm_cache_get(conn, "projects_sherwood_home")
     error = None
-    if (not cache) or int(cache.get("version") or 0) < 3:
+    if (not cache) or int(cache.get("version") or 0) < 4:
         payload, err = _build_amocrm_projects_rows()
         if err:
             error = err
-            payload = {"rows": [], "generated_at": None, "version": 3}
+            payload = {"rows": [], "generated_at": None, "version": 4}
         else:
             _amocrm_cache_set(conn, "projects_sherwood_home", payload)
             conn.commit()
@@ -7479,6 +8089,8 @@ def amocrm_projects_report():
 @work_items_manager_required
 def admin_work_items():
     """Справочник работ: ч/ч, стоимость часа, стоимость работы и активность."""
+    if session.get("role") == "director_construction":
+        return redirect(url_for("admin_construction_stages"))
     conn = get_db()
     if request.method == "POST":
         action = request.form.get("action")
@@ -7492,7 +8104,17 @@ def admin_work_items():
                 return 0.0
 
         if action == "save":
-            items = conn.execute("SELECT id FROM work_items").fetchall()
+            role = session.get("role")
+            # Ограничение по роли: обновляем только разрешённые типы
+            if role == "director_construction":
+                items = conn.execute("SELECT id FROM work_items WHERE work_item_type = 'construction'").fetchall()
+                enforced_type = "construction"
+            elif role == "director_production":
+                items = conn.execute("SELECT id FROM work_items WHERE work_item_type = 'production'").fetchall()
+                enforced_type = "production"
+            else:
+                items = conn.execute("SELECT id FROM work_items").fetchall()
+                enforced_type = None
             updated = 0
             name_errors = 0
             for r in items:
@@ -7512,6 +8134,8 @@ def admin_work_items():
                 work_item_type = (request.form.get(f"type_{wid}", "") or "production").strip()
                 if work_item_type not in ("production", "construction"):
                     work_item_type = "production"
+                if enforced_type:
+                    work_item_type = enforced_type
                 try:
                     if name:
                         conn.execute(
@@ -7528,7 +8152,7 @@ def admin_work_items():
                 updated += 1
             conn.commit()
             try:
-                _rebuild_work_item_codes(conn)
+                _rebuild_work_item_codes(conn, work_item_type=enforced_type)
                 conn.commit()
             except Exception:
                 pass
@@ -7540,6 +8164,12 @@ def admin_work_items():
             name = (request.form.get("name", "") or "").strip()
             work_item_type = (request.form.get("work_item_type", "") or "production").strip()
             if work_item_type not in ("production", "construction"):
+                work_item_type = "production"
+            # Ограничение по роли
+            role = session.get("role")
+            if role == "director_construction":
+                work_item_type = "construction"
+            elif role == "director_production":
                 work_item_type = "production"
             labor = _pf(request.form.get("labor_hours"))
             hour_price = _pf(request.form.get("hour_price"))
@@ -7555,7 +8185,7 @@ def admin_work_items():
                     )
                     conn.commit()
                     try:
-                        _rebuild_work_item_codes(conn)
+                        _rebuild_work_item_codes(conn, work_item_type=work_item_type if role in ("director_production", "director_construction") else None)
                         conn.commit()
                     except Exception:
                         pass
@@ -7567,23 +8197,36 @@ def admin_work_items():
             if not wid:
                 flash("Не выбрана работа.", "error")
             else:
-                used = conn.execute(
-                    "SELECT 1 FROM worker_daily_report_items WHERE work_item_id = ? LIMIT 1",
-                    (wid,),
-                ).fetchone()
-                if used:
-                    conn.execute("UPDATE work_items SET active = 0 WHERE id = ?", (wid,))
-                    conn.commit()
-                    flash("Работа уже использовалась в отчётах, поэтому она скрыта (деактивирована).", "info")
+                role = session.get("role")
+                # Проверка: директор может удалять только работы своего типа
+                row = conn.execute("SELECT work_item_type FROM work_items WHERE id = ?", (wid,)).fetchone()
+                if row and role == "director_construction" and (row["work_item_type"] or "production") != "construction":
+                    flash("Нет доступа к этой работе.", "error")
+                elif row and role == "director_production" and (row["work_item_type"] or "production") != "production":
+                    flash("Нет доступа к этой работе.", "error")
                 else:
-                    conn.execute("DELETE FROM work_items WHERE id = ?", (wid,))
-                    conn.commit()
-                    flash("Работа удалена.", "info")
-                try:
-                    _rebuild_work_item_codes(conn)
-                    conn.commit()
-                except Exception:
-                    pass
+                    used = conn.execute(
+                        "SELECT 1 FROM worker_daily_report_items WHERE work_item_id = ? LIMIT 1",
+                        (wid,),
+                    ).fetchone()
+                    if used:
+                        conn.execute("UPDATE work_items SET active = 0 WHERE id = ?", (wid,))
+                        conn.commit()
+                        flash("Работа уже использовалась в отчётах, поэтому она скрыта (деактивирована).", "info")
+                    else:
+                        conn.execute("DELETE FROM work_items WHERE id = ?", (wid,))
+                        conn.commit()
+                        flash("Работа удалена.", "info")
+                    rebuild_type = None
+                    if role == "director_construction":
+                        rebuild_type = "construction"
+                    elif role == "director_production":
+                        rebuild_type = "production"
+                    try:
+                        _rebuild_work_item_codes(conn, work_item_type=rebuild_type)
+                        conn.commit()
+                    except Exception:
+                        pass
         elif action == "import_price_list":
             upserted = 0
             for name, labor, hour_price, work_cost in WORK_ITEMS_PRICE_LIST:
@@ -7618,8 +8261,14 @@ def admin_work_items():
             flash(f"Импортировано/обновлено работ: {upserted}.", "success")
         elif action == "dedupe_and_renumber":
             try:
-                res = _dedupe_work_items(conn)
-                _rebuild_work_item_codes(conn)
+                role = session.get("role")
+                dedupe_type = None
+                if role == "director_construction":
+                    dedupe_type = "construction"
+                elif role == "director_production":
+                    dedupe_type = "production"
+                res = _dedupe_work_items(conn, work_item_type=dedupe_type)
+                _rebuild_work_item_codes(conn, work_item_type=dedupe_type)
                 conn.commit()
                 flash(
                     f"Готово. Удалено дублей: {res.get('deleted', 0)}. Нумерация обновлена.",
@@ -7636,6 +8285,13 @@ def admin_work_items():
     filter_type = (request.args.get("type") or "").strip().lower()
     if filter_type not in ("production", "construction"):
         filter_type = None
+
+    # Ограничение по роли: директор производства — только Производство; директор строительства — только Стройка на участке
+    role = session.get("role")
+    if role == "director_production":
+        filter_type = "production"
+    elif role == "director_construction":
+        filter_type = "construction"
     if sort not in ("code", "id", "name", "labor_hours", "hour_price", "work_cost", "active"):
         sort = "name"
     if direction not in ("asc", "desc"):
@@ -7671,14 +8327,128 @@ def admin_work_items():
            ORDER BY CASE WHEN work_item_type = 'production' THEN 0 ELSE 1 END, {order_sql}"""
     ).fetchall()]
     conn.close()
+    # Для ограниченных ролей — только свой тип справочника
+    allowed_types = WORK_ITEM_TYPES
+    if role == "director_production":
+        allowed_types = {"production": WORK_ITEM_TYPES["production"]}
+    elif role == "director_construction":
+        allowed_types = {"construction": WORK_ITEM_TYPES["construction"]}
+
     return render_template(
         "admin/work_items.html",
         items=items,
         work_item_types=WORK_ITEM_TYPES,
+        allowed_types=allowed_types,
         current_sort=sort,
         current_dir=direction,
         filter_type=filter_type,
-        current_role=session.get("role"),
+        current_role=role,
+    )
+
+
+@app.route("/admin/construction-stages")
+@admin_or_director_construction_required
+def admin_construction_stages():
+    """Справочник этапов стройки на участке по направлениям (каркас, газоблок, пенополистирол)."""
+    conn = get_db()
+    filter_type = (request.args.get("type") or "frame").strip().lower()
+    if filter_type not in ("frame", "gasblock", "penopolistirol"):
+        filter_type = "frame"
+
+    try:
+        # Проверка существования таблицы (миграция могла не выполниться)
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='construction_stage_templates'"
+        )
+        if not cursor.fetchone():
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS construction_stage_templates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    building_type TEXT NOT NULL CHECK (building_type IN ('frame', 'gasblock', 'penopolistirol')),
+                    name TEXT NOT NULL,
+                    order_num INTEGER NOT NULL DEFAULT 0,
+                    UNIQUE(building_type, name)
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS construction_substage_templates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    stage_template_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    order_num INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY (stage_template_id) REFERENCES construction_stage_templates (id) ON DELETE CASCADE
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS construction_operation_templates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    substage_template_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    order_num INTEGER NOT NULL DEFAULT 0,
+                    check_what_title TEXT,
+                    check_what_items TEXT,
+                    control_items TEXT,
+                    typical_errors TEXT,
+                    quick_checklist TEXT,
+                    FOREIGN KEY (substage_template_id) REFERENCES construction_substage_templates (id) ON DELETE CASCADE
+                )
+            """)
+            conn.commit()
+            try:
+                from construction_stage_seed import seed_construction_stage_templates
+                seed_construction_stage_templates(conn.cursor())
+                conn.commit()
+            except ImportError:
+                pass
+        else:
+            # Миграция: добавить новые подэтапы для Газоблок Фундамент
+            try:
+                from construction_stage_seed import migrate_fundament_substages
+                migrate_fundament_substages(conn.cursor(), "gasblock")
+                migrate_fundament_substages(conn.cursor(), "frame")
+                conn.commit()
+            except ImportError:
+                pass
+
+        stages = [dict(r) for r in conn.execute(
+            """SELECT id, building_type, name, order_num
+               FROM construction_stage_templates
+               WHERE building_type = ?
+               ORDER BY order_num, name""",
+            (filter_type,),
+        ).fetchall()]
+        for s in stages:
+            s["substages"] = [dict(r) for r in conn.execute(
+                """SELECT id, name, order_num
+                   FROM construction_substage_templates
+                   WHERE stage_template_id = ?
+                   ORDER BY order_num, name""",
+                (s["id"],),
+            ).fetchall()]
+            for sub in s["substages"]:
+                sub["operations"] = [dict(r) for r in conn.execute(
+                    """SELECT id, name, order_num, check_what_title, check_what_items, control_items, typical_errors, quick_checklist
+                       FROM construction_operation_templates
+                       WHERE substage_template_id = ?
+                       ORDER BY order_num, name""",
+                    (sub["id"],),
+                ).fetchall()]
+    except sqlite3.OperationalError as e:
+        conn.close()
+        from flask import current_app
+        current_app.logger.exception("construction_stages: %s", e)
+        flash(
+            "Ошибка справочника этапов. Перезапустите приложение.",
+            "error",
+        )
+        return redirect(url_for("admin_dashboard"))
+    conn.close()
+    return render_template(
+        "admin/construction_stages.html",
+        stages=stages,
+        building_types=BUILDING_TYPES,
+        filter_type=filter_type,
+        current_role=role,
     )
 
 
@@ -8229,19 +8999,12 @@ def foreman_reports():
 
     # Данные для фильтров
     if role == "director_construction":
+        # Директор по строительству видит всех прорабов и все объекты каркас/газоблок/пенополистирол
         foremen = [dict(r) for r in conn.execute(
-            "SELECT id, full_name FROM users WHERE role = 'foreman' AND reports_to_construction_id = ? ORDER BY full_name",
-            (user_id,),
+            "SELECT id, full_name FROM users WHERE role = 'foreman' ORDER BY full_name"
         ).fetchall()]
         projects = [dict(r) for r in conn.execute(
-            """SELECT DISTINCT p.id, p.name
-               FROM foreman_project_access fpa
-               JOIN projects p ON p.id = fpa.project_id
-               JOIN users u ON u.id = fpa.foreman_id
-               WHERE u.role = 'foreman' AND u.reports_to_construction_id = ?
-                 AND p.type IN ('frame', 'gasblock', 'penopolistirol')
-               ORDER BY p.name""",
-            (user_id,),
+            "SELECT id, name FROM projects WHERE type IN ('frame', 'gasblock', 'penopolistirol') ORDER BY name"
         ).fetchall()]
         cons_directors = []
     else:
@@ -8269,8 +9032,8 @@ def foreman_reports():
         where.append("u.reports_to_construction_id = ?")
         params.append(cons_director_id)
     if role == "director_construction":
-        where.append("u.reports_to_construction_id = ?")
-        params.append(user_id)
+        # Директор по строительству видит отчёты всех прорабов по объектам каркас/газоблок/пенополистирол
+        where.append("p.type IN ('frame', 'gasblock', 'penopolistirol')")
     where.append("u.role = 'foreman'")
 
     sql = f"""
@@ -8546,7 +9309,10 @@ def admin_edit_requests():
                                 reason="stage_edit_rejected",
                             )
                         conn.execute("DELETE FROM edit_request_photos WHERE edit_request_id = ?", (req_id,))
-                        conn.execute("UPDATE edit_requests SET status = 'rejected' WHERE id = ?", (req_id,))
+                        conn.execute(
+                            "UPDATE edit_requests SET status = 'rejected', admin_comment = ? WHERE id = ?",
+                            (admin_comment or None, req_id),
+                        )
                         if admin_comment:
                             conn.execute(
                                 "INSERT INTO project_chat (project_id, user_id, message, msg_type, stage_id) VALUES (?, ?, ?, 'edit_reject', ?)",
@@ -8557,13 +9323,14 @@ def admin_edit_requests():
         conn.close()
         return redirect(url_for("admin_edit_requests"))
 
+    # Директор по производству и по строительству — все заявки (включая отклонённые с комментарием)
+    # Админ — все заявки
     raw = conn.execute(
         """SELECT er.*, s.name as stage_name, s.project_id, p.name as project_name, u.full_name as master_name, u.role as creator_role
            FROM edit_requests er
            JOIN stages s ON er.stage_id = s.id
            JOIN projects p ON s.project_id = p.id
            JOIN users u ON er.master_id = u.id
-           WHERE er.status = 'pending'
            ORDER BY er.created_at DESC"""
     ).fetchall()
     # Фильтр по роли: директор по производству — только от мастера; директор по строительству — только от прораба
@@ -8602,7 +9369,7 @@ def admin_edit_requests():
 
 
 @app.route("/admin/project/<int:project_id>/chat", methods=["GET", "POST"])
-@projects_manager_required
+@admin_or_manager_op_required
 def admin_project_chat(project_id):
     """Чат проекта — admin, manager_op (свои проекты)"""
     conn = get_db()
@@ -8613,7 +9380,7 @@ def admin_project_chat(project_id):
         return redirect(url_for("admin_dashboard"))
     if session.get("role") == "manager_op":
         uid = session["user_id"]
-        if project.get("created_by_id") != uid and project.get("responsible_manager_id") != uid:
+        if project["created_by_id"] != uid and project["responsible_manager_id"] != uid:
             conn.close()
             flash("Доступ запрещён: это не ваш проект.", "error")
             return redirect(url_for("admin_projects"))
@@ -8634,6 +9401,7 @@ def admin_project_chat(project_id):
             return redirect(url_for("admin_project_stages", project_id=project_id))
         return redirect(url_for("admin_project_chat", project_id=project_id))
 
+    project = dict(project)
     stages = [dict(s) for s in conn.execute(
         "SELECT id, name FROM stages WHERE project_id = ? ORDER BY order_num", (project_id,)
     ).fetchall()]
@@ -8680,7 +9448,7 @@ def director_production_dashboard():
         """SELECT p.id, p.name
            FROM projects p
            JOIN users m ON m.id = p.master_id
-           WHERE m.role = 'master' AND m.reports_to_production_id = ?
+           WHERE p.type = 'module' AND m.role = 'master' AND m.reports_to_production_id = ?
            ORDER BY p.name""",
         (session["user_id"],),
     ).fetchall()]
@@ -8697,7 +9465,7 @@ def director_production_dashboard():
             ok_project = conn.execute(
                 """SELECT 1 FROM projects p
                    JOIN users m ON m.id = p.master_id
-                   WHERE p.id = ? AND m.role = 'master' AND m.reports_to_production_id = ?""",
+                   WHERE p.id = ? AND p.type = 'module' AND m.role = 'master' AND m.reports_to_production_id = ?""",
                 (project_id, session["user_id"]),
             ).fetchone()
             if not ok_worker or not ok_project:
@@ -8727,7 +9495,7 @@ def director_production_dashboard():
         """SELECT wpa.worker_id, u.full_name as worker_name, wpa.project_id, p.name as project_name, wpa.created_at
            FROM worker_project_access wpa
            JOIN users u ON u.id = wpa.worker_id
-           JOIN projects p ON p.id = wpa.project_id
+           JOIN projects p ON p.id = wpa.project_id AND p.type = 'module'
            WHERE wpa.assigned_by_id = ? AND wpa.assigned_by_role = 'director_production'
            ORDER BY wpa.created_at DESC""",
         (session["user_id"],),
@@ -8859,12 +9627,12 @@ def director_construction_dashboard():
     """Дашборд директора по строительству: прорабы направления и назначения объектов прорабам."""
     conn = get_db()
 
+    # Директор по строительству видит всех прорабов и все объекты каркас/газоблок/пенополистирол
     foremen = [dict(r) for r in conn.execute(
-        "SELECT id, full_name FROM users WHERE role = 'foreman' AND reports_to_construction_id = ? ORDER BY full_name",
-        (session["user_id"],),
+        "SELECT id, full_name FROM users WHERE role = 'foreman' ORDER BY full_name"
     ).fetchall()]
     projects = [dict(r) for r in conn.execute(
-        "SELECT id, name FROM projects ORDER BY name"
+        "SELECT id, name FROM projects WHERE type IN ('frame', 'gasblock', 'penopolistirol') ORDER BY name"
     ).fetchall()]
 
     if request.method == "POST":
@@ -8873,10 +9641,13 @@ def director_construction_dashboard():
         project_id = request.form.get("project_id", type=int)
         if action == "assign" and foreman_id and project_id:
             ok_foreman = conn.execute(
-                "SELECT 1 FROM users WHERE id = ? AND role = 'foreman' AND reports_to_construction_id = ?",
-                (foreman_id, session["user_id"]),
+                "SELECT 1 FROM users WHERE id = ? AND role = 'foreman'",
+                (foreman_id,),
             ).fetchone()
-            ok_project = conn.execute("SELECT 1 FROM projects WHERE id = ?", (project_id,)).fetchone()
+            ok_project = conn.execute(
+                "SELECT 1 FROM projects WHERE id = ? AND type IN ('frame', 'gasblock', 'penopolistirol')",
+                (project_id,),
+            ).fetchone()
             if not ok_foreman or not ok_project:
                 flash("Нельзя назначить: проверьте прораба и объект.", "error")
             else:
@@ -8916,12 +9687,9 @@ def director_construction_dashboard():
 
 
 @app.route("/director/stage-confirmations")
-@login_required
+@director_production_or_construction_required
 def director_stage_confirmations():
     """Этапы, ожидающие подтверждения: дир.производства (модуль), дир.строительства (каркас/газобетон/пенополистирол)"""
-    if session.get("role") not in ("director_production", "director_construction"):
-        flash("Доступ запрещён.", "error")
-        return redirect(url_for("index"))
     conn = get_db()
     role = session.get("role")
     cursor = conn.cursor()
@@ -8944,42 +9712,31 @@ def director_stage_confirmations():
                ORDER BY p.name, s.order_num""",
             (session["user_id"],),
         ).fetchall()]
-    elif role == "director_construction":
-        proj_cols = [r[1] for r in conn.execute("PRAGMA table_info(projects)").fetchall()]
-        uid = session["user_id"]
-        if "director_construction_id" in proj_cols:
-            stages = [dict(r) for r in conn.execute(
-                """SELECT s.id, s.name, s.stage_confirmed_at, p.id as project_id, p.name as project_name, p.type
-                   FROM stages s
-                   JOIN projects p ON p.id = s.project_id
-                   WHERE p.type IN ('frame', 'gasblock', 'penopolistirol')
-                     AND (p.director_construction_id = ?
-                          OR EXISTS (
-                            SELECT 1 FROM foreman_project_access fpa
-                            JOIN users u ON u.id = fpa.foreman_id
-                            WHERE fpa.project_id = p.id AND u.reports_to_construction_id = ?
-                          ))
-                     AND (SELECT COUNT(*) FROM reports WHERE stage_id = s.id) > 0
-                     AND s.stage_confirmed_at IS NULL
-                   ORDER BY p.name, s.order_num""",
-                (uid, uid),
+    elif role in ("director_construction", "admin") or is_superadmin(session.get("user_id")):
+        # Директор по строительству и админ — ВСЕ этапы на проверку (каркас/газоблок/пенополистирол)
+        stages = [dict(r) for r in conn.execute(
+            """SELECT sc.id as stage_completion_id, s.id, s.name, s.stage_confirmed_at,
+                      p.id as project_id, p.name as project_name, p.type, sc.comment as completion_comment
+               FROM stage_completions sc
+               JOIN stages s ON s.id = sc.stage_id
+               JOIN projects p ON p.id = s.project_id
+               WHERE p.type IN ('frame', 'gasblock', 'penopolistirol')
+                 AND sc.status = 'pending'
+               ORDER BY p.name, s.order_num"""
+        ).fetchall()]
+        # Фото от прораба: reports по stage_id (включая substage_completions)
+        for s in stages:
+            reports = [dict(r) for r in conn.execute(
+                "SELECT id, photo_path, comment FROM reports WHERE stage_id = ? ORDER BY created_at ASC",
+                (s["id"],),
             ).fetchall()]
-        else:
-            stages = [dict(r) for r in conn.execute(
-                """SELECT s.id, s.name, s.stage_confirmed_at, p.id as project_id, p.name as project_name, p.type
-                   FROM stages s
-                   JOIN projects p ON p.id = s.project_id
-                   WHERE p.type IN ('frame', 'gasblock', 'penopolistirol')
-                     AND EXISTS (
-                       SELECT 1 FROM foreman_project_access fpa
-                       JOIN users u ON u.id = fpa.foreman_id
-                       WHERE fpa.project_id = p.id AND u.reports_to_construction_id = ?
-                     )
-                     AND (SELECT COUNT(*) FROM reports WHERE stage_id = s.id) > 0
-                     AND s.stage_confirmed_at IS NULL
-                   ORDER BY p.name, s.order_num""",
-                (uid,),
-            ).fetchall()]
+            if reports:
+                rep_tokens = get_active_media_tokens_map(
+                    "stage_report", [int(r["id"]) for r in reports]
+                )
+                for r in reports:
+                    r["photo_token"] = rep_tokens.get(int(r["id"]))
+            s["reports"] = reports
     else:
         stages = []
     conn.close()
@@ -8987,13 +9744,10 @@ def director_stage_confirmations():
 
 
 @app.route("/director/project/<int:project_id>/chat", methods=["GET", "POST"])
-@login_required
+@director_production_or_construction_required
 def director_project_chat(project_id):
     """Чат проекта — директор по производству (модуль) или по строительству (каркас/газобетон/пенополистирол)"""
     role = session.get("role")
-    if role not in ("director_production", "director_construction"):
-        flash("Доступ запрещён.", "error")
-        return redirect(url_for("index"))
     conn = get_db()
     project = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
     if not project:
@@ -9002,7 +9756,9 @@ def director_project_chat(project_id):
         return redirect(url_for("director_production_dashboard" if role == "director_production" else "director_construction_dashboard"))
     project = dict(project)
     uid = session["user_id"]
-    if role == "director_production":
+    if role == "admin" or is_superadmin(uid):
+        ok = True  # Админ — доступ к любому проекту
+    elif role == "director_production":
         ok = conn.execute(
             """SELECT 1 FROM projects p
                JOIN users m ON m.id = p.master_id
@@ -9010,30 +9766,11 @@ def director_project_chat(project_id):
             (project_id, uid),
         ).fetchone()
     else:
-        proj_cols = [r[1] for r in conn.execute("PRAGMA table_info(projects)").fetchall()]
-        if "director_construction_id" in proj_cols:
-            ok = conn.execute(
-                """SELECT 1 FROM projects p
-                   WHERE p.id = ? AND p.type IN ('frame', 'gasblock', 'penopolistirol')
-                   AND (p.director_construction_id = ?
-                        OR EXISTS (
-                          SELECT 1 FROM foreman_project_access fpa
-                          JOIN users u ON u.id = fpa.foreman_id
-                          WHERE fpa.project_id = p.id AND u.reports_to_construction_id = ?
-                        ))""",
-                (project_id, uid, uid),
-            ).fetchone()
-        else:
-            ok = conn.execute(
-                """SELECT 1 FROM projects p
-                   WHERE p.id = ? AND p.type IN ('frame', 'gasblock', 'penopolistirol')
-                   AND EXISTS (
-                     SELECT 1 FROM foreman_project_access fpa
-                     JOIN users u ON u.id = fpa.foreman_id
-                     WHERE fpa.project_id = p.id AND u.reports_to_construction_id = ?
-                   )""",
-                (project_id, uid),
-            ).fetchone()
+        # Директор по строительству — доступ ко ВСЕМ проектам каркас/газоблок/пенополистирол
+        ok = conn.execute(
+            "SELECT 1 FROM projects p WHERE p.id = ? AND p.type IN ('frame', 'gasblock', 'penopolistirol')",
+            (project_id,),
+        ).fetchone()
     if not ok:
         conn.close()
         flash("Доступ запрещён: проект не в вашем направлении.", "error")
@@ -9053,6 +9790,8 @@ def director_project_chat(project_id):
         conn.close()
         if from_page == "confirmations":
             return redirect(url_for("director_stage_confirmations"))
+        if from_page == "stages":
+            return redirect(url_for("admin_project_stages", project_id=project_id))
         return redirect(url_for("director_project_chat", project_id=project_id))
 
     stages = [dict(s) for s in conn.execute(
@@ -9104,7 +9843,7 @@ def foreman_dashboard():
 @app.route("/foreman/project/<int:project_id>", methods=["GET", "POST"])
 @foreman_required
 def foreman_project(project_id):
-    """Объект для прораба: закрытие рабочего дня (работы + %)."""
+    """Объект для прораба: закрытие подэтапов, отправка на проверку, закрытие рабочего дня."""
     conn = get_db()
     access = conn.execute(
         """SELECT 1 FROM foreman_project_access
@@ -9125,7 +9864,188 @@ def foreman_project(project_id):
 
     if request.method == "POST":
         action = request.form.get("action")
-        if action == "close_day":
+        if action == "close_substage":
+            project_substage_id = request.form.get("project_substage_id", type=int)
+            comment = request.form.get("comment", "").strip()
+            photos = [p for p in request.files.getlist("photo") if p and p.filename and allowed_file(p.filename)]
+            if project_substage_id:
+                ps = conn.execute(
+                    """SELECT ps.id, ps.stage_id, ps.substage_template_id
+                       FROM project_substages ps
+                       JOIN stages s ON s.id = ps.stage_id
+                       WHERE ps.id = ? AND s.project_id = ?""",
+                    (project_substage_id, project_id),
+                ).fetchone()
+                if ps:
+                    ps = dict(ps)
+                    checklist_data = {}
+                    required_ops_with_checklist = []
+                    if ps.get("substage_template_id"):
+                        for op in conn.execute(
+                            """SELECT id, quick_checklist FROM construction_operation_templates
+                               WHERE substage_template_id = ? AND (quick_checklist IS NOT NULL AND quick_checklist != '')""",
+                            (ps["substage_template_id"],),
+                        ).fetchall():
+                            op = dict(op)
+                            items = []
+                            for line in (op.get("quick_checklist") or "").strip().split("\n"):
+                                line = line.strip()
+                                if line.startswith("•"):
+                                    items.append(line[1:].strip() or line)
+                                elif line:
+                                    items.append(line)
+                            vals = []
+                            for idx in range(len(items)):
+                                v = request.form.get(f"check_op_{op['id']}_{idx}")
+                                vals.append(v == "1")
+                            checklist_data[str(op["id"])] = vals
+                            if items:
+                                required_ops_with_checklist.append((op["id"], items, vals))
+                    checklist_json = json.dumps(checklist_data) if checklist_data else None
+                    # Проверка: если есть чек-лист — все пункты должны быть отмечены
+                    checklist_ok = True
+                    if required_ops_with_checklist:
+                        for _op_id, _items, _vals in required_ops_with_checklist:
+                            if len(_vals) != len(_items) or not all(_vals):
+                                checklist_ok = False
+                                break
+                    if len(photos) >= MIN_STAGE_PHOTOS and comment and checklist_ok:
+                        conn.execute(
+                            """INSERT INTO substage_completions (project_substage_id, foreman_id, comment, checklist_data)
+                               VALUES (?, ?, ?, ?)""",
+                            (project_substage_id, session["user_id"], comment, checklist_json),
+                        )
+                        subcomp_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                        rep_cols = [r[1] for r in conn.execute("PRAGMA table_info(reports)").fetchall()]
+                        has_subcomp_col = "substage_completion_id" in rep_cols
+                        for photo in photos:
+                            if has_subcomp_col:
+                                conn.execute(
+                                    "INSERT INTO reports (stage_id, photo_path, comment, substage_completion_id) VALUES (?, ?, ?, ?)",
+                                    (ps["stage_id"], "", comment, subcomp_id),
+                                )
+                            else:
+                                conn.execute(
+                                    "INSERT INTO reports (stage_id, photo_path, comment) VALUES (?, ?, ?)",
+                                    (ps["stage_id"], "", comment),
+                                )
+                            report_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                            try:
+                                rel_dir = _storage_rel_dir_for(
+                                    "stage_report",
+                                    project_id=int(project_id),
+                                    stage_id=int(ps["stage_id"]),
+                                )
+                                save_media_file(
+                                    photo,
+                                    project_id=int(project_id),
+                                    stage_id=int(ps["stage_id"]),
+                                    entity_type="stage_report",
+                                    entity_id=int(report_id),
+                                    uploaded_by_id=session.get("user_id"),
+                                    rel_dir=rel_dir,
+                                )
+                            except Exception:
+                                conn.execute("DELETE FROM reports WHERE id = ?", (report_id,))
+                        conn.commit()
+                        flash("Подэтап закрыт.", "success")
+                    else:
+                        if required_ops_with_checklist and not checklist_ok:
+                            flash("Отметьте все пункты чек-листа операций.", "error")
+                        elif len(photos) < MIN_STAGE_PHOTOS or not comment:
+                            flash("Нужно минимум 3 фото и комментарий.", "error")
+        elif action == "submit_stage":
+            stage_id = request.form.get("stage_id", type=int)
+            if stage_id:
+                stage = conn.execute(
+                    "SELECT id FROM stages WHERE id = ? AND project_id = ?",
+                    (stage_id, project_id),
+                ).fetchone()
+                if stage:
+                    substages = conn.execute(
+                        "SELECT id FROM project_substages WHERE stage_id = ?",
+                        (stage_id,),
+                    ).fetchall()
+                    rep_cols = [r[1] for r in conn.execute("PRAGMA table_info(reports)").fetchall()]
+                    has_subcomp = "substage_completion_id" in rep_cols
+                    all_ok = True
+                    for sub in substages:
+                        if has_subcomp:
+                            cnt = conn.execute(
+                                """SELECT COUNT(*) FROM reports r
+                                   WHERE r.substage_completion_id IN (
+                                     SELECT id FROM substage_completions WHERE project_substage_id = ?
+                                   )""",
+                                (sub["id"],),
+                            ).fetchone()[0]
+                        else:
+                            cnt = 0
+                        if cnt < MIN_STAGE_PHOTOS:
+                            all_ok = False
+                            break
+                    if all_ok and substages:
+                        if not conn.execute(
+                            "SELECT id FROM stage_completions WHERE stage_id = ? AND status = 'pending'",
+                            (stage_id,),
+                        ).fetchone():
+                            conn.execute(
+                                """INSERT INTO stage_completions (stage_id, foreman_id, status)
+                                   VALUES (?, ?, 'pending')""",
+                                (stage_id, session["user_id"]),
+                            )
+                            conn.commit()
+                            flash("Этап отправлен на проверку директору.", "success")
+                        else:
+                            flash("Этап уже ожидает проверки.", "info")
+                    else:
+                        flash("Сначала закройте все подэтапы (минимум 3 фото по каждому).", "error")
+        elif action == "add_report":
+            stage_id = request.form.get("stage_id", type=int)
+            comment = request.form.get("comment", "").strip()
+            photos = request.files.getlist("photo")
+            if stage_id:
+                stage = conn.execute(
+                    "SELECT id FROM stages WHERE id = ? AND project_id = ?",
+                    (stage_id, project_id),
+                ).fetchone()
+                if stage:
+                    saved = 0
+                    for photo in photos:
+                        if photo and photo.filename and allowed_file(photo.filename):
+                            conn.execute(
+                                "INSERT INTO reports (stage_id, photo_path, comment) VALUES (?, ?, ?)",
+                                (stage_id, "", comment),
+                            )
+                            report_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                            try:
+                                rel_dir = _storage_rel_dir_for(
+                                    "stage_report",
+                                    project_id=int(project_id),
+                                    stage_id=int(stage_id),
+                                )
+                                save_media_file(
+                                    photo,
+                                    project_id=int(project_id),
+                                    stage_id=int(stage_id),
+                                    entity_type="stage_report",
+                                    entity_id=int(report_id),
+                                    uploaded_by_id=session.get("user_id"),
+                                    rel_dir=rel_dir,
+                                )
+                                saved += 1
+                            except Exception:
+                                conn.execute("DELETE FROM reports WHERE id = ?", (int(report_id),))
+                    if saved > 0:
+                        conn.commit()
+                        flash("Отчёт добавлен." if saved == 1 else f"Добавлено фото: {saved}.", "success")
+                    else:
+                        flash("Добавьте хотя бы одну фотографию (JPG или PNG).", "error")
+        elif action == "close_day":
+            # Закрытие рабочего дня — только для модульного строительства; для стройки на участке прораб закрывает подэтапы
+            if project.get("type") in ("frame", "gasblock", "penopolistirol"):
+                flash("Закрытие рабочего дня доступно только для модульного строительства.", "error")
+                conn.close()
+                return redirect(url_for("foreman_project", project_id=project_id))
             report_date = (request.form.get("report_date", "") or "").strip()
             work_item_ids = request.form.getlist("work_item_id")
             percents = request.form.getlist("percent")
@@ -9235,10 +10155,70 @@ def foreman_project(project_id):
         daily_reports.append(d)
 
     stages_raw = conn.execute(
-        "SELECT id, name, order_num, planned_start_date, planned_end_date FROM stages WHERE project_id = ? ORDER BY order_num",
+        """SELECT s.id, s.name, s.order_num, s.planned_start_date, s.planned_end_date
+           FROM stages s WHERE s.project_id = ? ORDER BY s.order_num""",
         (project_id,),
     ).fetchall()
-    stages = [dict(r) for r in stages_raw]
+    stages = []
+    rep_cols = [r[1] for r in conn.execute("PRAGMA table_info(reports)").fetchall()]
+    has_subcomp_col = "substage_completion_id" in rep_cols
+    for row in stages_raw:
+        s = dict(row)
+        substages_raw = conn.execute(
+            """SELECT ps.id, ps.name, ps.order_num, ps.substage_template_id
+               FROM project_substages ps WHERE ps.stage_id = ? ORDER BY ps.order_num""",
+            (s["id"],),
+        ).fetchall()
+        s["substages"] = []
+        for ps_row in substages_raw:
+            ps = dict(ps_row)
+            if has_subcomp_col:
+                ps["photos_count"] = conn.execute(
+                    """SELECT COUNT(*) FROM reports r
+                       WHERE r.substage_completion_id IN (
+                         SELECT id FROM substage_completions WHERE project_substage_id = ?
+                       )""",
+                    (ps["id"],),
+                ).fetchone()[0]
+            else:
+                ps["photos_count"] = 0
+            ps["completed"] = ps["photos_count"] >= MIN_STAGE_PHOTOS
+            ps["operations"] = []
+            if ps.get("substage_template_id"):
+                for op in conn.execute(
+                    """SELECT id, name, quick_checklist FROM construction_operation_templates
+                       WHERE substage_template_id = ? ORDER BY order_num""",
+                    (ps["substage_template_id"],),
+                ).fetchall():
+                    opd = dict(op)
+                    items = []
+                    if opd.get("quick_checklist"):
+                        for line in (opd["quick_checklist"] or "").strip().split("\n"):
+                            line = line.strip()
+                            if line.startswith("•"):
+                                items.append(line[1:].strip() or line)
+                            elif line:
+                                items.append(line)
+                    opd["checklist_items"] = items
+                    ps["operations"].append(opd)
+            s["substages"].append(ps)
+        all_sub_done = all(ps["completed"] for ps in s["substages"]) if s["substages"] else False
+        s["can_submit"] = all_sub_done
+        s["pending_completion"] = conn.execute(
+            "SELECT id FROM stage_completions WHERE stage_id = ? AND status = 'pending'",
+            (s["id"],),
+        ).fetchone() is not None
+        s["reports"] = [dict(r) for r in conn.execute(
+            "SELECT * FROM reports WHERE stage_id = ? ORDER BY created_at DESC",
+            (s["id"],),
+        ).fetchall()]
+        if s["reports"]:
+            rep_tokens = get_active_media_tokens_map(
+                "stage_report", [int(r["id"]) for r in s["reports"]]
+            )
+            for r in s["reports"]:
+                r["photo_token"] = rep_tokens.get(int(r["id"]))
+        stages.append(s)
 
     conn.close()
     return render_template(
@@ -9247,6 +10227,7 @@ def foreman_project(project_id):
         work_items=work_items,
         daily_reports=daily_reports,
         stages=stages,
+        min_stage_photos=MIN_STAGE_PHOTOS,
     )
 
 
@@ -9335,7 +10316,7 @@ def master_dashboard():
         """SELECT p.*, u.full_name as client_name
            FROM projects p
            LEFT JOIN users u ON p.client_id = u.id
-           WHERE p.master_id = ?
+           WHERE p.master_id = ? AND p.type = 'module'
            ORDER BY p.created_at DESC""",
         (session["user_id"],),
     ).fetchall()]
@@ -9357,7 +10338,7 @@ def master_project(project_id):
     """Страница объекта для мастера"""
     conn = get_db()
     project = conn.execute(
-        "SELECT * FROM projects WHERE id = ? AND master_id = ?",
+        "SELECT * FROM projects WHERE id = ? AND master_id = ? AND type = 'module'",
         (project_id, session["user_id"]),
     ).fetchone()
     if not project:
@@ -9609,42 +10590,33 @@ def stage_confirm(stage_id):
     cursor = conn.cursor()
     cursor.execute("PRAGMA table_info(stages)")
     stage_cols = [r[1] for r in cursor.fetchall()]
-    if "stage_confirmed_by_id" not in stage_cols or stage.get("stage_confirmed_at"):
+    if "stage_confirmed_by_id" not in stage_cols or stage["stage_confirmed_at"]:
         conn.close()
         return redirect(request.referrer or url_for("index"))
     role = session.get("role")
+    uid = session.get("user_id")
     can_confirm = False
     if stage["type"] == "module":
-        if role == "master" and stage["master_id"] == session["user_id"]:
+        if role == "admin" or is_superadmin(uid):
+            can_confirm = True
+        elif role == "master" and stage["master_id"] == uid:
             can_confirm = True
         elif role == "director_production":
             m = conn.execute(
                 "SELECT reports_to_production_id FROM users WHERE id = ?",
                 (stage["master_id"],),
             ).fetchone()
-            if m and m["reports_to_production_id"] == session["user_id"]:
+            if m and m["reports_to_production_id"] == uid:
                 can_confirm = True
-    elif stage["type"] in ("frame", "gasblock", "penopolistirol") and role == "director_construction":
-        proj_cols = [r[1] for r in conn.execute("PRAGMA table_info(projects)").fetchall()]
-        if "director_construction_id" in proj_cols:
-            proj = conn.execute(
-                "SELECT director_construction_id FROM projects WHERE id = ?",
-                (stage["project_id"],),
-            ).fetchone()
-            if proj and proj.get("director_construction_id") == session["user_id"]:
-                can_confirm = True
-        if not can_confirm:
-            has_foreman = conn.execute(
-                """SELECT 1 FROM foreman_project_access fpa
-                   JOIN users u ON u.id = fpa.foreman_id
-                   WHERE fpa.project_id = ? AND u.reports_to_construction_id = ?""",
-                (stage["project_id"], session["user_id"]),
-            ).fetchone()
-            if has_foreman:
-                can_confirm = True
+    elif stage["type"] in ("frame", "gasblock", "penopolistirol"):
+        if role == "admin" or is_superadmin(uid):
+            can_confirm = True
+        elif role == "director_construction":
+            can_confirm = True
     if can_confirm:
         reports_count = conn.execute("SELECT COUNT(*) FROM reports WHERE stage_id = ?", (stage_id,)).fetchone()[0]
-        if reports_count > 0:
+        min_photos = MIN_STAGE_PHOTOS if stage["type"] in ("frame", "gasblock", "penopolistirol") else 1
+        if reports_count >= min_photos:
             conn.execute(
                 "UPDATE stages SET stage_confirmed_by_id = ?, stage_confirmed_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (session["user_id"], stage_id),
@@ -9655,13 +10627,97 @@ def stage_confirm(stage_id):
     return redirect(request.referrer or url_for("index"))
 
 
+@app.route("/stage-completion/<int:sc_id>/confirm", methods=["POST"])
+@login_required
+def stage_completion_confirm(sc_id):
+    """Подтверждение этапа (stage_completions) — admin/superadmin или директор по строительству"""
+    role = session.get("role")
+    uid = session.get("user_id")
+    if role not in ("admin", "director_construction") and not is_superadmin(uid):
+        flash("Доступ запрещён.", "error")
+        return redirect(url_for("index"))
+    conn = get_db()
+    sc = conn.execute(
+        """SELECT sc.*, s.id as stage_id, s.project_id
+           FROM stage_completions sc
+           JOIN stages s ON s.id = sc.stage_id
+           WHERE sc.id = ? AND sc.status = 'pending'""",
+        (sc_id,),
+    ).fetchone()
+    if not sc:
+        conn.close()
+        flash("Запись не найдена или уже обработана.", "error")
+        return redirect(url_for("director_stage_confirmations"))
+    # Директор по строительству может подтвердить любой этап каркас/газоблок/пенополистирол
+    proj = conn.execute(
+        "SELECT type FROM projects WHERE id = ?",
+        (sc["project_id"],),
+    ).fetchone()
+    ok = proj and proj["type"] in ("frame", "gasblock", "penopolistirol")
+    if ok:
+        conn.execute(
+            "UPDATE stage_completions SET status = 'confirmed', confirmed_by_id = ?, confirmed_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (session["user_id"], sc_id),
+        )
+        conn.execute(
+            "UPDATE stages SET stage_confirmed_by_id = ?, stage_confirmed_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (session["user_id"], sc["stage_id"]),
+        )
+        conn.commit()
+        flash("Этап подтверждён.", "success")
+    conn.close()
+    return redirect(url_for("director_stage_confirmations"))
+
+
+@app.route("/stage-completion/<int:sc_id>/reject", methods=["POST"])
+@login_required
+def stage_completion_reject(sc_id):
+    """Отклонение этапа (stage_completions) — admin/superadmin или директор по строительству"""
+    role = session.get("role")
+    uid = session.get("user_id")
+    if role not in ("admin", "director_construction") and not is_superadmin(uid):
+        flash("Доступ запрещён.", "error")
+        return redirect(url_for("index"))
+    rejection_comment = request.form.get("rejection_comment", "").strip()
+    if not rejection_comment:
+        flash("Укажите причину отклонения.", "error")
+        return redirect(url_for("director_stage_confirmations"))
+    conn = get_db()
+    sc = conn.execute(
+        """SELECT sc.*, s.project_id
+           FROM stage_completions sc
+           JOIN stages s ON s.id = sc.stage_id
+           WHERE sc.id = ? AND sc.status = 'pending'""",
+        (sc_id,),
+    ).fetchone()
+    if not sc:
+        conn.close()
+        flash("Запись не найдена или уже обработана.", "error")
+        return redirect(url_for("director_stage_confirmations"))
+    # Директор по строительству может отклонить любой этап каркас/газоблок/пенополистирол
+    proj = conn.execute(
+        "SELECT type FROM projects WHERE id = ?",
+        (sc["project_id"],),
+    ).fetchone()
+    ok = proj and proj["type"] in ("frame", "gasblock", "penopolistirol")
+    if ok:
+        conn.execute(
+            "UPDATE stage_completions SET status = 'rejected', rejection_comment = ? WHERE id = ?",
+            (rejection_comment, sc_id),
+        )
+        conn.commit()
+        flash("Этап отклонён. Прораб может доработать и отправить снова.", "info")
+    conn.close()
+    return redirect(url_for("director_stage_confirmations"))
+
+
 @app.route("/master/project/<int:project_id>/chat", methods=["GET", "POST"])
 @master_required
 def master_project_chat(project_id):
     """Чат проекта — только админ и мастер, клиент не имеет доступа"""
     conn = get_db()
     project = conn.execute(
-        "SELECT * FROM projects WHERE id = ? AND master_id = ?",
+        "SELECT * FROM projects WHERE id = ? AND master_id = ? AND type = 'module'",
         (project_id, session["user_id"]),
     ).fetchone()
     if not project:
@@ -9728,7 +10784,7 @@ def worker_dashboard():
     projects = [dict(r) for r in conn.execute(
         """SELECT p.*, u.full_name as master_name
            FROM worker_project_access wpa
-           JOIN projects p ON p.id = wpa.project_id
+           JOIN projects p ON p.id = wpa.project_id AND p.type = 'module'
            LEFT JOIN users u ON p.master_id = u.id
            WHERE wpa.worker_id = ?
            ORDER BY p.created_at DESC""",
@@ -9758,7 +10814,7 @@ def worker_project(project_id):
     project = conn.execute(
         """SELECT p.*
            FROM worker_project_access wpa
-           JOIN projects p ON p.id = wpa.project_id
+           JOIN projects p ON p.id = wpa.project_id AND p.type = 'module'
            WHERE wpa.worker_id = ? AND p.id = ?""",
         (session["user_id"], project_id),
     ).fetchone()

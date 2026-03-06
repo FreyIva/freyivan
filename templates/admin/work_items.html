@@ -30,14 +30,18 @@
 
 {% block breadcrumbs %}
 <nav class="breadcrumbs">
+    {% if current_role == 'director_production' %}
+    <a href="{{ url_for('director_production_dashboard') }}">Директор по производству</a> &rarr; <span>Справочник работ</span>
+    {% else %}
     <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr; <span>Справочник работ</span>
+    {% endif %}
 </nav>
 {% endblock %}
 
 {% block content %}
 <div class="page-header">
     <h1>Справочник работ</h1>
-    <p class="subtitle">Два вида: <strong>Производство</strong> — для отчётов работников (модульные проекты); <strong>Участок</strong> — для отчётов прорабов (каркас, газоблок, пенополистирол). Колонки: трудозатраты (ч/ч), стоимость 1 часа, стоимость работы.</p>
+    <p class="subtitle"><strong>Производство</strong> — модульные дома (мастер, работник). Админ видит все виды. Колонки: трудозатраты (ч/ч), стоимость 1 часа, стоимость работы.</p>
 </div>
 
 <section class="card">
@@ -48,7 +52,7 @@
             <div class="form-group" style="flex: 1; min-width: 160px;">
                 <label for="work_item_type">Вид справочника</label>
                 <select id="work_item_type" name="work_item_type" class="form-control">
-                    {% for k, v in work_item_types.items() %}
+                    {% for k, v in (allowed_types if allowed_types is defined else work_item_types).items() %}
                     <option value="{{ k }}">{{ v }}</option>
                     {% endfor %}
                 </select>
@@ -83,12 +87,16 @@
             <input type="hidden" name="action" value="dedupe_and_renumber">
             <button type="submit" class="btn btn-outline" onclick="return confirm('Удалить дубли работ и пересобрать нумерацию (№) по алфавиту? Это НЕ затронет историю закрытий, ссылки будут перенесены.');">Убрать дубли и перенумеровать</button>
         </form>
+        {% if current_role != 'director_construction' %}
         <form method="post" style="display:inline;">
             <input type="hidden" name="action" value="import_price_list">
             <button type="submit" class="btn btn-outline" onclick="return confirm('Импортировать прайс-лист и обновить существующие работы по названию?');">Импорт прайса</button>
         </form>
+        {% endif %}
         <a href="{{ url_for('worker_reports') }}" class="btn btn-outline">Отчёты работников</a>
+        {% if current_role != 'director_production' %}
         <a href="{{ url_for('foreman_reports') }}" class="btn btn-outline">Отчёты прорабов</a>
+        {% endif %}
     </div>
     <p class="card-meta">Примечание: «Стоимость работы» используется как ставка за 100% выполнения в отчётах (умножается на % закрытия).</p>
     <form method="post" class="form">
@@ -143,7 +151,7 @@
                         <td><strong>{{ it.code or it.id }}</strong></td>
                         <td>
                             <select class="form-control" name="type_{{ it.id }}">
-                                {% for k, v in work_item_types.items() %}
+                                {% for k, v in (allowed_types if allowed_types is defined else work_item_types).items() %}
                                 <option value="{{ k }}" {% if (it.work_item_type or 'production') == k %}selected{% endif %}>{{ v }}</option>
                                 {% endfor %}
                             </select>

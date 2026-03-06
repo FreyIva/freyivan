@@ -1,12 +1,13 @@
-{# Выпадающий список: Согласование, Заявки на проекты, Заявки на редактирование, Уведомления — показывается ролям, у которых есть хотя бы один пункт #}
+{# Выпадающий список: Согласование, Заявки, Подтверждение этапов (прораб→дир.строительства), Подтверждение работ (работник→мастер/дир.производства) #}
 {% set role = session.get('role') %}
 {% set has_approvals = role == 'admin' %}
 {% set has_takeover_requests = role == 'admin' %}
 {% set has_edit_requests = role in ('admin', 'director_production', 'director_construction') %}
+{% set has_work_approvals = role in ('master', 'director_production') %}
 {% set has_notifications = role in ('admin', 'manager_op', 'client') %}
-{% set show_dropdown = has_approvals or has_takeover_requests or has_edit_requests or has_notifications %}
+{% set show_dropdown = has_approvals or has_takeover_requests or has_edit_requests or has_work_approvals or has_notifications %}
 {% if session.get('user_id') and show_dropdown %}
-{% set total_badge = (pending_document_approvals_count|default(0)) + (pending_takeover_requests_count|default(0)) + (pending_edit_requests_count|default(0)) + (unread_notifications_count|default(0)) %}
+{% set total_badge = (pending_document_approvals_count|default(0)) + (pending_takeover_requests_count|default(0)) + (pending_edit_requests_count|default(0)) + (pending_stage_confirmations_count|default(0)) + (pending_work_approvals_count|default(0)) + (unread_notifications_count|default(0)) %}
 <details class="nav-dropdown nav-approvals-dropdown">
     <summary class="nav-link">
         Согласование и заявки{% if total_badge %}<span class="nav-badge">{{ total_badge }}</span>{% endif %}
@@ -25,6 +26,21 @@
         {% if has_edit_requests %}
         <a href="{{ url_for('admin_edit_requests') }}" class="nav-link{% if request.endpoint == 'admin_edit_requests' %} active{% endif %}">
             Заявки на редактирование{% if pending_edit_requests_count %}<span class="nav-badge">{{ pending_edit_requests_count }}</span>{% endif %}
+        </a>
+        {% endif %}
+        {% if role in ('admin', 'director_construction') %}
+        <a href="{{ url_for('director_stage_confirmations') }}" class="nav-link{% if request.endpoint == 'director_stage_confirmations' %} active{% endif %}">
+            Подтверждение этапов (прораб){% if pending_stage_confirmations_count %}<span class="nav-badge">{{ pending_stage_confirmations_count }}</span>{% endif %}
+        </a>
+        {% endif %}
+        {% if role == 'director_production' %}
+        <a href="{{ url_for('director_stage_confirmations') }}" class="nav-link{% if request.endpoint == 'director_stage_confirmations' %} active{% endif %}">
+            Подтверждение этапов (модуль){% if pending_stage_confirmations_count %}<span class="nav-badge">{{ pending_stage_confirmations_count }}</span>{% endif %}
+        </a>
+        {% endif %}
+        {% if has_work_approvals %}
+        <a href="{{ url_for('master_work_approvals' if role == 'master' else 'director_production_work_approvals') }}" class="nav-link{% if request.endpoint in ('master_work_approvals', 'director_production_work_approvals') %} active{% endif %}">
+            Подтверждение работ (работник){% if pending_work_approvals_count %}<span class="nav-badge">{{ pending_work_approvals_count }}</span>{% endif %}
         </a>
         {% endif %}
         {% if has_notifications %}

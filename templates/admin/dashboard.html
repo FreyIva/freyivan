@@ -102,8 +102,8 @@
     {# Вариант 2: Таблица #}
     <div class="dashboard-recent-view" data-view="2" style="{% if recent_display != '2' %}display:none;{% endif %}">
     <div class="users-table-wrap">
-        <table class="admin-projects-table">
-            <thead><tr><th>Превью</th><th>Объект</th><th>Тип</th><th>Адрес</th></tr></thead>
+        <table class="admin-projects-table" data-sortable>
+            <thead><tr><th scope="col">Превью</th><th scope="col" data-sortable="1">Объект</th><th scope="col" data-sortable="2">Тип</th><th scope="col" data-sortable="3">Адрес</th></tr></thead>
             <tbody>
                 {% for p in recent %}
                 <tr>

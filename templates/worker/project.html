@@ -23,7 +23,7 @@
 <section class="card">
     <h2>Закрыть рабочий день</h2>
     <p class="subtitle">Выберите выполненные работы и укажите, какой процент закрыли за день.</p>
-    <form method="post" action="{{ url_for('worker_project', project_id=project.id) }}" class="form" id="close-day-form">
+    <form method="post" action="{{ url_for('worker_project', project_id=project.id) }}" class="form" id="close-day-form" data-unsaved-warn>
         <input type="hidden" name="action" value="close_day">
         <div class="form-row">
             <div class="form-group" style="max-width: 260px;">
@@ -32,10 +32,10 @@
             </div>
         </div>
 
-        <div class="users-table-wrap">
+        <div class="users-table-wrap work-rows-wrap">
             <table class="users-table" id="work-rows">
                 <thead>
-                    <tr><th>Работа</th><th style="width:180px;">% выполнения</th><th>Комментарий</th><th style="width:240px;">Действия</th></tr>
+                    <tr><th scope="col">Работа</th><th scope="col" style="width:180px;">% выполнения</th><th scope="col">Комментарий</th><th scope="col" style="width:240px;">Действия</th></tr>
                 </thead>
                 <tbody>
                     <tr class="work-row">
@@ -88,7 +88,7 @@
         {% if dr.work_rows %}
         <div class="users-table-wrap" style="margin-top: 0.5rem;">
             <table class="users-table">
-                <thead><tr><th style="width:90px;">№</th><th>Работа</th><th style="width:160px;">% выполнения</th><th>Комментарий</th></tr></thead>
+                <thead><tr><th scope="col" style="width:90px;">№</th><th scope="col">Работа</th><th scope="col" style="width:160px;">% выполнения</th><th scope="col">Комментарий</th></tr></thead>
                 <tbody>
                     {% for it in dr.work_rows %}
                     <tr>
@@ -241,7 +241,7 @@
             if (!first) return;
             var last = tbody.querySelector('tr.work-row:last-child');
             if (last && !isConfirmed(last)) {
-                alert('Сначала нажмите «Подтвердить этап» в последней строке.');
+                showToast('Сначала нажмите «Подтвердить этап» в последней строке.');
                 var cb = last.querySelector('button.stage-confirm');
                 if (cb && !cb.disabled) cb.focus();
                 return;
@@ -264,12 +264,12 @@
                 var wSel = row.querySelector('select.work-item-select');
                 var pSel = row.querySelector('select.percent-select');
                 if (!wSel || !wSel.value) {
-                    alert('Сначала выберите работу.');
+                    showToast('Сначала выберите работу.');
                     if (wSel) wSel.focus();
                     return;
                 }
                 if (!pSel || !pSel.value) {
-                    alert('Сначала выберите % выполнения.');
+                    showToast('Сначала выберите % выполнения.');
                     if (pSel && !pSel.disabled) pSel.focus();
                     return;
                 }
@@ -297,7 +297,7 @@
                 var notConfirmed = rows.find(function(r){ return !isConfirmed(r); });
                 if (notConfirmed) {
                     e.preventDefault();
-                    alert('Перед закрытием дня подтвердите этап в каждой строке кнопкой «Подтвердить этап».');
+                    showToast('Подтвердите этап в каждой строке кнопкой «Подтвердить этап».');
                     var cb = notConfirmed.querySelector('button.stage-confirm');
                     if (cb && !cb.disabled) cb.focus();
                 }

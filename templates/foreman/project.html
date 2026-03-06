@@ -24,25 +24,103 @@
 {% if stages %}
 <section class="card">
     <h2>Этапы проекта</h2>
-    <p class="subtitle">Плановые даты начала и окончания этапов.</p>
-    <div class="users-table-wrap">
-        <table class="users-table">
-            <thead><tr><th style="width:60px;">№</th><th>Этап</th><th style="width:140px;">Начало</th><th style="width:140px;">Окончание</th></tr></thead>
-            <tbody>
-                {% for s in stages %}
-                <tr>
-                    <td>{{ s.order_num }}</td>
-                    <td>{{ s.name }}</td>
-                    <td>{{ s.planned_start_date|dmy if s.planned_start_date else '—' }}</td>
-                    <td>{{ s.planned_end_date|dmy if s.planned_end_date else '—' }}</td>
-                </tr>
+    <p class="subtitle">Закройте каждый подэтап (мин. {{ min_stage_photos }} фото + комментарий). Когда все подэтапы закрыты — нажмите «Отправить на проверку».</p>
+    <div class="stages-section">
+        {% for s in stages %}
+        <div class="stage-card {% if s.can_submit %}stage-done{% else %}stage-pending{% endif %}">
+            <div class="stage-card-header">
+                <span class="stage-status-icon">
+                    {% if s.pending_completion %}📋{% elif s.can_submit %}✅{% else %}⏳{% endif %}
+                </span>
+                <span class="stage-name">{{ s.name }}</span>
+                {% if s.planned_start_date or s.planned_end_date %}
+                <span class="stage-dates">Начало: {{ s.planned_start_date|dmy if s.planned_start_date else '—' }} · Окончание: {{ s.planned_end_date|dmy if s.planned_end_date else '—' }}</span>
+                {% endif %}
+                <span class="stage-status-label">
+                    {% if s.pending_completion %}Ожидает проверки директора
+                    {% elif s.can_submit %}Готов к отправке
+                    {% else %}Подэтапы: {{ s.substages|selectattr('completed')|list|length }}/{{ s.substages|length }}
+                    {% endif %}
+                </span>
+            </div>
+            <div class="substages-list">
+                {% for ps in s.substages %}
+                <div class="substage-item {% if ps.completed %}substage-done{% endif %}">
+                    <span class="substage-toggle">{% if ps.completed %}✅{% else %}⏳{% endif %}</span>
+                    <span class="substage-name">{{ ps.name }}</span>
+                    <span class="substage-photos">Фото: {{ ps.photos_count }}/{{ min_stage_photos }}</span>
+                    {% if not ps.completed %}
+                    <button type="button" class="btn btn-small btn-primary close-substage-btn"
+                            data-substage-id="{{ ps.id }}" data-substage-name="{{ ps.name }}"
+                            data-ops="{{ ps.operations|tojson|e }}">
+                        Закрыть подэтап
+                    </button>
+                    {% endif %}
+                </div>
                 {% endfor %}
-            </tbody>
-        </table>
+            </div>
+            {% if s.reports %}
+            <div class="stage-reports">
+                <p class="reports-title">Фото по этапу:</p>
+                <div class="photo-carousel-wrap">
+                    <div class="photo-carousel stage-photo-carousel">
+                        {% for r in s.reports %}
+                        <div class="photo-carousel-slide">
+                            {% if r.get('photo_token') %}
+                            <a href="{{ url_for('media_file', token=r['photo_token']) }}" class="photo-carousel-item photo-open-full" data-fullscreen>
+                                <img src="{{ url_for('media_file', token=r['photo_token']) }}" alt="Фото отчёта">
+                            </a>
+                            {% endif %}
+                            {% if r.get('comment') %}<p class="report-comment">{{ r['comment'] }}</p>{% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            <div class="stage-actions-row">
+                {% if s.can_submit and not s.pending_completion %}
+                <form method="post" action="{{ url_for('foreman_project', project_id=project.id) }}" style="display:inline;">
+                    <input type="hidden" name="action" value="submit_stage">
+                    <input type="hidden" name="stage_id" value="{{ s.id }}">
+                    <button type="submit" class="btn btn-primary">Отправить на проверку</button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
     </div>
 </section>
+
+<!-- Модальное окно закрытия подэтапа -->
+<div id="substageModal" class="modal">
+    <div class="modal-content">
+        <span class="modal-close">&times;</span>
+        <h3>Закрыть подэтап: <span id="modalSubstageName"></span></h3>
+        <p class="card-meta">Требуется не менее {{ min_stage_photos }} фотографий и комментарий.</p>
+        <form method="post" action="{{ url_for('foreman_project', project_id=project.id) }}" enctype="multipart/form-data" id="substageForm" data-unsaved-warn>
+            <input type="hidden" name="action" value="close_substage">
+            <input type="hidden" name="project_substage_id" id="modalSubstageId">
+            <div class="form-group">
+                <label for="substage_photo">Фотографии (JPG, PNG)</label>
+                <input type="file" id="substage_photo" name="photo" accept=".jpg,.jpeg,.png" multiple class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label for="substage_comment">Комментарий</label>
+                <textarea id="substage_comment" name="comment" rows="3" class="form-control" placeholder="Описание выполненной работы" required></textarea>
+            </div>
+            <div id="checklistSection" class="form-group" style="display:none;">
+                <label>Чек-лист</label>
+                <div id="checklistItems"></div>
+            </div>
+            <button type="submit" class="btn btn-primary">Закрыть подэтап</button>
+        </form>
+    </div>
+</div>
 {% endif %}
 
+{# Закрытие рабочего дня — только для модульного строительства; для стройки на участке прораб закрывает подэтапы с фото #}
+{% if project.type not in ('frame', 'gasblock', 'penopolistirol') %}
 <section class="card">
     <h2>Закрыть рабочий день</h2>
     <p class="subtitle">Выберите выполненные работы и укажите, какой процент закрыли за день.</p>
@@ -58,7 +136,7 @@
         <div class="users-table-wrap">
             <table class="users-table" id="work-rows">
                 <thead>
-                    <tr><th>Работа</th><th style="width:180px;">% выполнения</th><th>Комментарий</th><th style="width:240px;">Действия</th></tr>
+                    <tr><th scope="col">Работа</th><th scope="col" style="width:180px;">% выполнения</th><th scope="col">Комментарий</th><th scope="col" style="width:240px;">Действия</th></tr>
                 </thead>
                 <tbody>
                     <tr class="work-row">
@@ -111,7 +189,7 @@
         {% if dr.work_rows %}
         <div class="users-table-wrap" style="margin-top: 0.5rem;">
             <table class="users-table">
-                <thead><tr><th style="width:90px;">№</th><th>Работа</th><th style="width:120px;">%</th><th>Комментарий</th></tr></thead>
+                <thead><tr><th scope="col" style="width:90px;">№</th><th scope="col">Работа</th><th scope="col" style="width:120px;">%</th><th scope="col">Комментарий</th></tr></thead>
                 <tbody>
                     {% for it in dr.work_rows %}
                     <tr>
@@ -131,9 +209,66 @@
     {% endfor %}
 </section>
 {% endif %}
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
+<script>
+    (function() {
+        var substageModal = document.getElementById('substageModal');
+        var closeSubstageBtns = document.querySelectorAll('.close-substage-btn');
+        var modalSubstageName = document.getElementById('modalSubstageName');
+        var modalSubstageId = document.getElementById('modalSubstageId');
+        var checklistSection = document.getElementById('checklistSection');
+        var checklistItems = document.getElementById('checklistItems');
+        if (substageModal && closeSubstageBtns.length) {
+            closeSubstageBtns.forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    modalSubstageId.value = btn.getAttribute('data-substage-id');
+                    modalSubstageName.textContent = btn.getAttribute('data-substage-name');
+                    var ops = [];
+                    try {
+                        ops = JSON.parse(btn.getAttribute('data-ops') || '[]');
+                    } catch (e) {}
+                    checklistItems.innerHTML = '';
+                    var hasChecklist = false;
+                    ops.forEach(function(op) {
+                        if (op.checklist_items && op.checklist_items.length) {
+                            hasChecklist = true;
+                            var div = document.createElement('div');
+                            div.className = 'checklist-op';
+                            div.innerHTML = '<strong>' + (op.name || '') + '</strong>';
+                            op.checklist_items.forEach(function(item, idx) {
+                                var label = document.createElement('label');
+                                label.className = 'checkbox-label';
+                                var cb = document.createElement('input');
+                                cb.type = 'checkbox';
+                                cb.name = 'check_op_' + op.id + '_' + idx;
+                                cb.value = '1';
+                                cb.required = true;
+                                label.appendChild(cb);
+                                label.appendChild(document.createTextNode(' ' + item));
+                                div.appendChild(label);
+                            });
+                            checklistItems.appendChild(div);
+                        }
+                    });
+                    checklistSection.style.display = hasChecklist ? 'block' : 'none';
+                    if (hasChecklist) checklistItems.querySelectorAll('input[required]').forEach(function(cb){ cb.required = true; });
+                    substageModal.classList.add('active');
+                });
+            });
+            if (substageModal) {
+                substageModal.querySelectorAll('.modal-close').forEach(function(btn) {
+                    btn.addEventListener('click', function() { substageModal.classList.remove('active'); });
+                });
+                substageModal.addEventListener('click', function(e) {
+                    if (e.target === substageModal) substageModal.classList.remove('active');
+                });
+            }
+        }
+    })();
+</script>
 <script>
     (function() {
         var dateInput = document.getElementById('report_date');
@@ -260,7 +395,7 @@
             if (!first) return;
             var last = tbody.querySelector('tr.work-row:last-child');
             if (last && !isConfirmed(last)) {
-                alert('Сначала нажмите «Подтвердить этап» в последней строке.');
+                showToast('Сначала нажмите «Подтвердить этап» в последней строке.');
                 var cb = last.querySelector('button.stage-confirm');
                 if (cb && !cb.disabled) cb.focus();
                 return;
@@ -283,12 +418,12 @@
                 var wSel = row.querySelector('select.work-item-select');
                 var pSel = row.querySelector('select.percent-select');
                 if (!wSel || !wSel.value) {
-                    alert('Сначала выберите работу.');
+                    showToast('Сначала выберите работу.');
                     if (wSel) wSel.focus();
                     return;
                 }
                 if (!pSel || !pSel.value) {
-                    alert('Сначала выберите % выполнения.');
+                    showToast('Сначала выберите % выполнения.');
                     if (pSel && !pSel.disabled) pSel.focus();
                     return;
                 }
@@ -315,7 +450,7 @@
                 var notConfirmed = rows.find(function(r){ return !isConfirmed(r); });
                 if (notConfirmed) {
                     e.preventDefault();
-                    alert('Перед закрытием дня подтвердите этап в каждой строке кнопкой «Подтвердить этап».');
+                    showToast('Подтвердите этап в каждой строке кнопкой «Подтвердить этап».');
                     var cb = notConfirmed.querySelector('button.stage-confirm');
                     if (cb && !cb.disabled) cb.focus();
                 }

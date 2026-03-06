@@ -6,6 +6,7 @@
 <a href="{{ url_for('master_dashboard') }}" class="nav-link active">Мои объекты{% if unread_chat_count %}<span class="nav-badge">{{ unread_chat_count }}</span>{% endif %}</a>
 <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
 <a href="{{ url_for('master_work_approvals') }}" class="nav-link">Подтверждение работ</a>
+<a href="{{ url_for('master_work_approvals') }}" class="nav-link">Подтверждение работ</a>
 {% endblock %}
 
 {% block breadcrumbs %}

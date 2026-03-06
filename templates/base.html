@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="color-scheme" content="light dark">
     <meta name="theme-color" content="#0b1220" media="(prefers-color-scheme: dark)">
     <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body class="theme-style-1">
+    <a href="#main-content" class="skip-link">Перейти к контенту</a>
     <header class="header">
         <div class="header-inner">
             <a href="{{ url_for('index') }}" class="logo">
@@ -31,7 +32,7 @@
                     <button type="button" class="theme-toggle-btn" data-report-theme="5">5</button>
                 </div>
                 {% if can_impersonate %}
-                <form method="post" action="{{ url_for('switch_user') }}" class="impersonation-form">
+                <form method="post" action="{{ url_for('switch_user') }}" class="impersonation-form" data-no-loading>
                     <select name="user_id" class="form-control impersonation-select" onchange="this.form.submit()" title="Войти под пользователем">
                         <option value="">Войти как…</option>
                         {% if is_impersonating %}
@@ -60,7 +61,7 @@
 
     {% block breadcrumbs %}{% endblock %}
 
-    <main class="main">
+    <main class="main" id="main-content" tabindex="-1">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
             <div class="flash-messages">
@@ -84,9 +85,66 @@
         <p>Шервуд Хоум СтройКонтроль &copy; 2026</p>
     </footer>
 
+    <div id="global-toast" class="toast" role="status" aria-live="polite"></div>
+
+    <!-- Command Palette (Ctrl+K / Cmd+K) -->
+    <div id="command-palette" class="command-palette" role="dialog" aria-label="Быстрая навигация" aria-hidden="true">
+        <div class="command-palette-backdrop"></div>
+        <div class="command-palette-content">
+            <input type="text" id="command-palette-input" class="form-control" placeholder="Поиск раздела…" autocomplete="off" aria-label="Поиск">
+            <ul id="command-palette-list" class="command-palette-list"></ul>
+        </div>
+    </div>
+
     {% block scripts %}{% endblock %}
     <script>
         (function() {
+            window.showToast = function(msg) {
+                var toast = document.getElementById('global-toast') || document.getElementById('toast');
+                if (!toast) return;
+                toast.textContent = msg;
+                toast.classList.add('show');
+                window.clearTimeout(window._toastTimer);
+                window._toastTimer = window.setTimeout(function() { toast.classList.remove('show'); }, 2500);
+            };
+
+            // Индикатор загрузки при submit форм
+            document.addEventListener('submit', function(e) {
+                var form = e.target;
+                if (form && form.tagName === 'FORM' && !form.hasAttribute('data-no-loading')) {
+                    var btn = form.querySelector('button[type="submit"]');
+                    if (btn && !btn.disabled) {
+                        btn.disabled = true;
+                        btn.dataset.originalText = btn.textContent;
+                        btn.textContent = 'Сохранение…';
+                    }
+                    form.dataset.submitted = '1';
+                }
+            }, true);
+
+            // Предупреждение при уходе с несохранённой формой
+            (function() {
+                var dirty = false;
+                function addListeners(els) {
+                    els.forEach(function(el) {
+                        el.addEventListener('change', function() { dirty = true; });
+                        el.addEventListener('input', function() { dirty = true; });
+                    });
+                }
+                document.querySelectorAll('form[data-unsaved-warn]').forEach(function(form) {
+                    var inputs = form.querySelectorAll('input, select, textarea');
+                    addListeners(inputs);
+                    if (form.id) {
+                        var ext = document.querySelectorAll('input[form="' + form.id + '"], select[form="' + form.id + '"], textarea[form="' + form.id + '"]');
+                        addListeners(ext);
+                    }
+                    form.addEventListener('submit', function() { dirty = false; });
+                });
+                window.addEventListener('beforeunload', function(e) {
+                    if (dirty) e.preventDefault();
+                });
+            })();
+
             // Маска телефона: +7 (903) 301-90-09
             document.querySelectorAll('.phone-input').forEach(function(input) {
                 function formatPhone() {
@@ -300,6 +358,130 @@
                     applyTheme(theme);
                 });
             })();
+
+            // Индикатор загрузки при submit форм
+            document.querySelectorAll('form:not([data-no-loading])').forEach(function(form) {
+                form.addEventListener('submit', function() {
+                    var btn = form.querySelector('button[type="submit"], input[type="submit"]');
+                    if (btn && !btn.classList.contains('is-loading')) {
+                        btn.classList.add('is-loading');
+                        var origText = btn.textContent || btn.value;
+                        if (btn.tagName === 'BUTTON') {
+                            btn.dataset.origText = origText;
+                            btn.textContent = origText.indexOf('Сохран') >= 0 ? origText : (origText.indexOf('Войти') >= 0 ? 'Вход…' : 'Сохранение…');
+                        }
+                        setTimeout(function() {
+                            btn.classList.remove('is-loading');
+                            if (btn.dataset.origText) btn.textContent = btn.dataset.origText;
+                        }, 15000);
+                    }
+                });
+            });
+
+            // Сортировка таблиц по клику на заголовок
+            document.querySelectorAll('table[data-sortable] th[data-sortable]').forEach(function(th) {
+                th.addEventListener('click', function() {
+                    var table = th.closest('table');
+                    var tbody = table.querySelector('tbody');
+                    if (!tbody) return;
+                    var col = parseInt(th.getAttribute('data-sortable'), 10);
+                    if (isNaN(col)) col = Array.prototype.indexOf.call(th.parentNode.children, th);
+                    var dir = th.classList.contains('sort-asc') ? -1 : 1;
+                    table.querySelectorAll('th[data-sortable]').forEach(function(h) { h.classList.remove('sort-asc', 'sort-desc'); });
+                    th.classList.add(dir === 1 ? 'sort-asc' : 'sort-desc');
+                    var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+                    rows.sort(function(a, b) {
+                        var ac = (a.children[col] && a.children[col].textContent || '').trim().toLowerCase();
+                        var bc = (b.children[col] && b.children[col].textContent || '').trim().toLowerCase();
+                        var cmp = ac.localeCompare(bc, 'ru');
+                        return dir * cmp;
+                    });
+                    rows.forEach(function(r) { tbody.appendChild(r); });
+                });
+            });
+
+            // Command Palette (Ctrl+K / Cmd+K)
+            (function() {
+                var palette = document.getElementById('command-palette');
+                var input = document.getElementById('command-palette-input');
+                var list = document.getElementById('command-palette-list');
+                var backdrop = palette && palette.querySelector('.command-palette-backdrop');
+                if (!palette || !input || !list) return;
+
+                function collectLinks() {
+                    var links = [];
+                    document.querySelectorAll('.nav a.nav-link, .nav-dropdown-menu a.nav-link').forEach(function(a) {
+                        var text = (a.textContent || '').replace(/\s+/g, ' ').trim();
+                        var href = a.getAttribute('href');
+                        if (href && href !== '#' && text) links.push({ text: text, href: href });
+                    });
+                    return links;
+                }
+
+                function openPalette() {
+                    palette.classList.add('command-palette-open');
+                    palette.setAttribute('aria-hidden', 'false');
+                    input.value = '';
+                    input.focus();
+                    renderList(collectLinks());
+                }
+
+                function closePalette() {
+                    palette.classList.remove('command-palette-open');
+                    palette.setAttribute('aria-hidden', 'true');
+                }
+
+                function renderList(links) {
+                    var q = (input.value || '').trim().toLowerCase();
+                    var filtered = q ? links.filter(function(l) { return l.text.toLowerCase().indexOf(q) >= 0; }) : links;
+                    list.innerHTML = filtered.slice(0, 12).map(function(l, i) {
+                        return '<li><a href="' + l.href + '" class="command-palette-item" data-index="' + i + '">' + l.text + '</a></li>';
+                    }).join('');
+                }
+
+                document.addEventListener('keydown', function(e) {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                        e.preventDefault();
+                        if (palette.classList.contains('command-palette-open')) closePalette();
+                        else openPalette();
+                    }
+                    if (e.key === 'Escape') closePalette();
+                });
+
+                input.addEventListener('input', function() { renderList(collectLinks()); });
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                        var items = list.querySelectorAll('.command-palette-item');
+                        if (items.length === 0) return;
+                        e.preventDefault();
+                        var current = document.activeElement;
+                        var idx = -1;
+                        items.forEach(function(it, i) { if (it === current) idx = i; });
+                        if (e.key === 'ArrowDown') idx = (idx + 1) % items.length;
+                        else idx = idx <= 0 ? items.length - 1 : idx - 1;
+                        items[idx].focus();
+                    }
+                    if (e.key === 'Enter') {
+                        var first = list.querySelector('.command-palette-item');
+                        if (first) { first.click(); closePalette(); }
+                    }
+                });
+
+                if (backdrop) backdrop.addEventListener('click', closePalette);
+            })();
+
+            // Предупреждение при уходе с несохранённой формой
+            document.querySelectorAll('form[data-unsaved-warn]').forEach(function(form) {
+                var dirty = false;
+                form.querySelectorAll('input, select, textarea').forEach(function(el) {
+                    el.addEventListener('change', function() { dirty = true; });
+                    el.addEventListener('input', function() { dirty = true; });
+                });
+                form.addEventListener('submit', function() { dirty = false; });
+                window.addEventListener('beforeunload', function(e) {
+                    if (dirty) { e.preventDefault(); e.returnValue = ''; }
+                });
+            });
 
         })();
     </script>

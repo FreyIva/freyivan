@@ -97,10 +97,13 @@
         </div>
         <div class="card">
             <h3>Продажи: сумма по месяцам</h3>
+            <div class="muted" style="margin:-4px 0 8px;">
+                Факт выполнения плана: <strong id="sales-plan-fact-rate">0%</strong>
+            </div>
             <canvas id="line-sales-amount"></canvas>
         </div>
         <div class="card">
-            <h3>Продажи: факт/план площади по месяцам (м²)</h3>
+            <h3>Продажи по месяцам: 4 столбца (модульные/участок, план+факт)</h3>
             <canvas id="bar-sales-count"></canvas>
         </div>
         <div class="card">
@@ -251,6 +254,7 @@
         var mRate = d.mLeads ? (d.mQuals * 100.0 / d.mLeads) : 0;
         var mCpl = d.mLeads ? (d.mBudget / d.mLeads) : 0;
         var sAvg = d.sArea ? (d.sAmount / d.sArea) : 0;
+        var salesPlanFactRate = d.sPlanAmount ? (d.sAmount * 100.0 / d.sPlanAmount) : 0;
 
         document.getElementById('kpi-m-leads').textContent = fmtInt(d.mLeads);
         document.getElementById('kpi-m-quals').textContent = fmtInt(d.mQuals);
@@ -262,6 +266,7 @@
         document.getElementById('kpi-s-plan-count').textContent = fmtInt(d.sPlanArea);
         document.getElementById('kpi-s-plan-amount').textContent = fmtMoney(d.sPlanAmount);
         document.getElementById('kpi-s-avg').textContent = fmtMoney(sAvg);
+        document.getElementById('sales-plan-fact-rate').textContent = fmtPct(salesPlanFactRate);
 
         var mLabels = d.mm.map(function(m){ return m.label; });
         var marketingCanvas = document.getElementById('line-marketing');
@@ -445,7 +450,28 @@
                     maintainAspectRatio:false,
                     animation: animLine(),
                     interaction: { mode: 'index', intersect: false },
-                    plugins:{legend:{labels:{color:'#e5e7eb'}}},
+                    plugins:{
+                        legend:{labels:{color:'#e5e7eb'}},
+                        tooltip:{
+                            callbacks:{
+                                title:function(items){
+                                    if (!items || !items.length) return '';
+                                    var idx = items[0].dataIndex || 0;
+                                    var row = d.sm[idx] || {};
+                                    return row.label || '';
+                                },
+                                label:function(ctx){
+                                    var idx = ctx.dataIndex || 0;
+                                    var row = d.sm[idx] || {};
+                                    var monthRate = row.plan_amount ? ((row.sold_amount || 0) * 100.0 / row.plan_amount) : 0;
+                                    if (ctx.datasetIndex === 0) {
+                                        return 'Факт сумма: ' + fmtMoney(row.sold_amount || 0) + ' · Выполнение: ' + fmtPct(monthRate);
+                                    }
+                                    return 'План сумма: ' + fmtMoney(row.plan_amount || 0);
+                                }
+                            }
+                        }
+                    },
                     scales:{x:{ticks:{color:'#cbd5e1'}}, y:{ticks:{color:'#cbd5e1'}}}
                 }
             });
@@ -457,8 +483,10 @@
         var barSalesData = {
             labels:sLabels,
             datasets:[
-                { label:'Факт площадь, м²', data:d.sm.map(function(m){ return m.sold_area || 0; }), backgroundColor:'#22c55e' },
-                { label:'План площадь, м²', data:d.sm.map(function(m){ return m.plan_area || 0; }), backgroundColor:'#6366f1' }
+                { label:'План модульные, м²', data:d.sm.map(function(m){ return m.plan_area_modular || 0; }), backgroundColor:'#60a5fa' },
+                { label:'Факт модульные, м²', data:d.sm.map(function(m){ return m.sold_area_modular || 0; }), backgroundColor:'#10b981' },
+                { label:'План каркас/газоблок/пенополистиролбетон, м²', data:d.sm.map(function(m){ return m.plan_area_onsite_total || 0; }), backgroundColor:'#fbbf24' },
+                { label:'Факт каркас/газоблок/пенополистиролбетон, м²', data:d.sm.map(function(m){ return m.sold_area_onsite_total || 0; }), backgroundColor:'#f59e0b' }
             ]
         };
         if (!charts.barSales) {

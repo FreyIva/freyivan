@@ -33,7 +33,9 @@
 {% if can_page_foreman_reports %}
 <a href="{{ url_for('foreman_reports') }}" class="nav-link active">Отчёты прорабов</a>
 {% endif %}
+<a href="{{ url_for('director_stage_confirmations') }}" class="nav-link">Подтверждение этапов</a>
 <a href="{{ url_for('director_construction_calendar') }}" class="nav-link">Производственный календарь</a>
+{% include '_nav_spravochniki_dropdown.html' %}
 {% endif %}
 {% endblock %}
 
@@ -143,16 +145,16 @@
         <table class="users-table">
             <thead>
                 <tr>
-                    <th style="width: 120px;">Дата</th>
-                    <th>Проект</th>
-                    <th style="width: 220px;">Прораб</th>
-                    <th style="width: 90px;">№</th>
-                    <th>Работа</th>
-                    <th style="width: 120px;">%</th>
-                    <th style="width: 140px;">Ставка</th>
-                    <th style="width: 140px;">Сумма</th>
-                    <th>Комментарий</th>
-                    {% if current_role == 'admin' %}<th style="width: 140px;">Действия</th>{% endif %}
+                    <th scope="col" style="width: 120px;">Дата</th>
+                    <th scope="col">Проект</th>
+                    <th scope="col" style="width: 220px;">Прораб</th>
+                    <th scope="col" style="width: 90px;">№</th>
+                    <th scope="col">Работа</th>
+                    <th scope="col" style="width: 120px;">%</th>
+                    <th scope="col" style="width: 140px;">Ставка</th>
+                    <th scope="col" style="width: 140px;">Сумма</th>
+                    <th scope="col">Комментарий</th>
+                    {% if current_role == 'admin' %}<th scope="col" style="width: 140px;">Действия</th>{% endif %}
                 </tr>
             </thead>
             <tbody>

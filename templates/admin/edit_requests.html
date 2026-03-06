@@ -7,9 +7,16 @@
 {% if current_role == 'director_production' %}
 <a href="{{ url_for('director_production_dashboard') }}" class="nav-link">Дашборд</a>
 <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+<a href="{{ url_for('director_production_work_approvals') }}" class="nav-link">Подтверждение работ</a>
+<a href="{{ url_for('director_stage_confirmations') }}" class="nav-link">Подтверждение этапов</a>
+<a href="{{ url_for('director_production_calendar') }}" class="nav-link">Производственный календарь</a>
+{% include '_nav_spravochniki_dropdown.html' %}
 {% elif current_role == 'director_construction' %}
 <a href="{{ url_for('director_construction_dashboard') }}" class="nav-link">Дашборд</a>
 <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+<a href="{{ url_for('director_stage_confirmations') }}" class="nav-link">Подтверждение этапов</a>
+<a href="{{ url_for('director_construction_calendar') }}" class="nav-link">Производственный календарь</a>
+{% include '_nav_spravochniki_dropdown.html' %}
 {% endif %}
 {% else %}
 <a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
@@ -40,16 +47,25 @@
 {% block content %}
 <div class="page-header">
     <h1>Заявки на редактирование этапов</h1>
-    <p class="subtitle">{% if current_role == 'director_production' %}Заявки от мастеров.{% elif current_role == 'director_construction' %}Заявки и отчёты от прорабов.{% else %}Мастера и прорабы запрашивают замену фото. Подтвердите или отмените.{% endif %}</p>
+    <p class="subtitle">{% if current_role == 'director_production' %}Заявки от мастеров. Все заявки (включая одобренные и отклонённые).{% elif current_role == 'director_construction' %}Заявки и отчёты от прорабов. Все заявки (включая одобренные и отклонённые).{% else %}Мастера и прорабы запрашивают замену фото. Все заявки (включая рассмотренные).{% endif %}</p>
 </div>
 
 {% if edit_requests %}
 {% for req in edit_requests %}
-<div class="card edit-request-card">
+<div class="card edit-request-card edit-request-status-{{ req.status or 'pending' }}">
     <div class="edit-request-header">
         <h3>{{ req.project_name }} — {{ req.stage_name }}</h3>
-        <p class="edit-request-meta">{{ 'Прораб' if req.get('creator_role') == 'foreman' else 'Мастер' }}: {{ req.master_name }} | {{ req.created_at[:19] if req.created_at else '' }}</p>
+        <p class="edit-request-meta">
+            {{ 'Прораб' if req.get('creator_role') == 'foreman' else 'Мастер' }}: {{ req.master_name }} | {{ req.created_at[:19] if req.created_at else '' }}
+            {% if req.status == 'approved' %} <span class="badge badge-approved">Одобрено</span>{% endif %}
+            {% if req.status == 'rejected' %} <span class="badge badge-rejected">Отклонено</span>{% endif %}
+        </p>
     </div>
+    {% if req.status == 'rejected' and req.get('admin_comment') %}
+    <div class="edit-request-rejection-comment">
+        <strong>Причина отклонения:</strong> {{ req.admin_comment }}
+    </div>
+    {% endif %}
     {% if req.new_photos and req.new_photos[0].get('comment') %}
     <div class="master-comment-highlight">
         <strong>Сообщение мастера:</strong> {{ req.new_photos[0]['comment'] }}
@@ -104,6 +120,7 @@
             </div>
         </div>
     </div>
+    {% if req.status == 'pending' %}
     <form method="post" action="{{ url_for('admin_edit_requests') }}" class="edit-request-form">
         <input type="hidden" name="request_id" value="{{ req.id }}">
         <div class="edit-request-comment-block">
@@ -115,6 +132,7 @@
             <button type="submit" name="action" value="reject" class="btn btn-danger" onclick="return confirm('Отменить заявку? Статус этапа останется прежним.');">Отменить</button>
         </div>
     </form>
+    {% endif %}
 </div>
 {% endfor %}
 {% else %}

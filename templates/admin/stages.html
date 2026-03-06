@@ -8,6 +8,12 @@
 <a href="{{ url_for('admin_projects') }}" class="nav-link active">Проекты</a>
 <a href="{{ url_for('manager_op_takeover') }}" class="nav-link">Взять проект</a>
 <a href="{{ url_for('admin_production_calendar') }}" class="nav-link">Производственный календарь</a>
+{% elif session.get('role') == 'director_construction' %}
+<a href="{{ url_for('director_construction_dashboard') }}" class="nav-link">Дашборд</a>
+<a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+<a href="{{ url_for('director_stage_confirmations') }}" class="nav-link">Подтверждение этапов</a>
+<a href="{{ url_for('director_construction_calendar') }}" class="nav-link">Производственный календарь</a>
+{% include '_nav_spravochniki_dropdown.html' %}
 {% else %}
 <a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
 {% if can_impersonate %}
@@ -32,10 +38,14 @@
 <nav class="breadcrumbs">
     {% if session.get('role') == 'manager_op' %}
     <a href="{{ url_for('manager_op_dashboard') }}">Менеджер ОП</a> &rarr;
+    <a href="{{ url_for('admin_projects') }}">Проекты</a> &rarr;
+    {% elif session.get('role') == 'director_construction' %}
+    <a href="{{ url_for('director_construction_dashboard') }}">Дашборд</a> &rarr;
+    <a href="{{ url_for('director_stage_confirmations') }}">Подтверждение этапов</a> &rarr;
     {% else %}
     <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr;
-    {% endif %}
     <a href="{{ url_for('admin_projects') }}">Проекты</a> &rarr;
+    {% endif %}
     <span>{{ project.name }}</span>
 </nav>
 {% endblock %}
@@ -44,8 +54,14 @@
 <div class="page-header">
     <h1>Этапы проекта: {{ project.name }}{% if project.get('completed_at') %} <span class="badge badge-completed">Завершён</span>{% endif %}</h1>
     <p class="subtitle">{{ building_types.get(project.type, project.type) }} — {{ project.address }}{% if project.responsible_manager_name %} · Ответственный ОП: {{ project.responsible_manager_name }}{% endif %}</p>
-    <a href="{{ url_for('admin_project_chat', project_id=project.id) }}" class="btn btn-outline">Чат проекта</a>
-    <a href="{{ url_for('admin_project_edit', project_id=project.id) }}" class="btn btn-outline">Редактировать проект</a>
+    <div class="page-header-actions">
+        {% if session.get('role') == 'director_construction' %}
+        <a href="{{ url_for('director_project_chat', project_id=project.id) }}" class="btn btn-outline">Чат проекта</a>
+        {% else %}
+        <a href="{{ url_for('admin_project_chat', project_id=project.id) }}" class="btn btn-outline">Чат проекта</a>
+        {% endif %}
+        {% if can_edit_stages %}
+        <a href="{{ url_for('admin_project_edit', project_id=project.id) }}" class="btn btn-outline">Редактировать проект</a>
     {% if session.get('role') == 'admin' %}
     {% if project.get('completed_at') %}
     <form method="post" action="{{ url_for('admin_project_stages', project_id=project.id) }}" style="display:inline;">
@@ -59,9 +75,13 @@
     </form>
     {% endif %}
     {% endif %}
-    <form method="post" action="{{ url_for('admin_project_delete', project_id=project.id) }}" style="display:inline;" onsubmit="return confirm('Удалить проект и все его этапы?');">
-        <button type="submit" class="btn btn-danger">Удалить проект</button>
-    </form>
+        {% if can_edit_stages %}
+        <span class="page-header-actions-sep"></span>
+        <form method="post" action="{{ url_for('admin_project_delete', project_id=project.id) }}" style="display:inline;" onsubmit="return confirm('Удалить проект и все его этапы?');">
+            <button type="submit" class="btn btn-danger">Удалить проект</button>
+        </form>
+        {% endif %}
+    </div>
 </div>
 
 <section class="card project-photo-card">
@@ -73,6 +93,7 @@
     {% else %}
     <p class="muted">Фото не добавлено</p>
     {% endif %}
+    {% if can_edit_stages %}
     <form method="post" action="{{ url_for('admin_project_stages', project_id=project.id) }}" enctype="multipart/form-data" class="project-photo-form">
         <input type="hidden" name="action" value="edit_photo">
         <div class="form-row">
@@ -80,19 +101,21 @@
             <button type="submit" class="btn btn-primary">{{ 'Изменить' if (project.get('photo_token') or project.get('photo_path')) else 'Добавить' }}</button>
         </div>
     </form>
+    {% endif %}
 </section>
 
-
+{% if can_edit_stages %}
 <section class="card">
     <h2>Добавить этап</h2>
-    <p class="subtitle" style="margin-bottom: 0.75rem;">Даты начала и окончания попадают в производственный календарь</p>
-    <form method="post" action="{{ url_for('admin_project_stages', project_id=project.id) }}" class="form form-inline">
+    <p class="subtitle" style="margin-bottom: 0.75rem;">{% if can_edit_dates %}Даты начала и окончания попадают в производственный календарь{% else %}Даты редактирует только администратор{% endif %}</p>
+    <form method="post" action="{{ url_for('admin_project_stages', project_id=project.id) }}" class="form form-inline" data-unsaved-warn>
         <input type="hidden" name="action" value="add">
         <div class="form-row">
             <div class="form-group">
                 <label for="stage_name">Название этапа</label>
                 <input type="text" id="stage_name" name="stage_name" required class="form-control" placeholder="Например: Фундамент">
             </div>
+            {% if can_edit_dates %}
             <div class="form-group">
                 <label for="stage_planned_start">Начало</label>
                 <input type="date" id="stage_planned_start" name="stage_planned_start" class="form-control" title="Плановая дата начала">
@@ -101,15 +124,17 @@
                 <label for="stage_planned_end">Окончание</label>
                 <input type="date" id="stage_planned_end" name="stage_planned_end" class="form-control" title="Плановая дата окончания">
             </div>
+            {% endif %}
             <button type="submit" class="btn btn-primary">Добавить</button>
         </div>
     </form>
 </section>
+{% endif %}
 
 <section class="card">
     <h2>Список этапов</h2>
     {% if stages %}
-    <form method="post" action="{{ url_for('admin_project_stages', project_id=project.id) }}" id="stages-form" style="display:none;">
+    <form method="post" action="{{ url_for('admin_project_stages', project_id=project.id) }}" id="stages-form" style="display:none;" data-unsaved-warn>
         <input type="hidden" name="action" value="save_all">
     </form>
     <div class="stages-list">
@@ -118,12 +143,29 @@
         <div class="stage-item" data-stage-id="{{ s.id }}">
             <span class="stage-order">{{ s.order_num }}</span>
             <div class="stage-actions">
+                {% if can_edit_stages %}
                 <input type="text" name="stage_{{ s.id }}" form="stages-form" value="{{ s.name }}" class="form-control stage-name-edit" placeholder="Название">
+                {% if can_edit_dates %}
                 <input type="date" name="stage_planned_start_{{ s.id }}" form="stages-form" value="{{ s.planned_start_date or '' }}" class="form-control" style="max-width: 130px;" title="Начало">
                 <input type="date" name="stage_planned_end_{{ s.id }}" form="stages-form" value="{{ s.planned_end_date or '' }}" class="form-control" style="max-width: 130px;" title="Окончание">
+                {% else %}
+                <span class="stage-dates-readonly" title="Редактирование дат только для admin/superadmin">{{ s.planned_start_date or '—' }} … {{ s.planned_end_date or '—' }}</span>
+                {% endif %}
+                {% else %}
+                <span class="stage-name-readonly">{{ s.name }}</span>
+                <span class="stage-dates-readonly">{{ s.planned_start_date or '—' }} … {{ s.planned_end_date or '—' }}</span>
+                {% endif %}
             </div>
+            {% if can_edit_stages %}
             <button type="button" class="btn btn-small btn-danger stage-delete-btn" data-stage-id="{{ s.id }}">Удалить</button>
+            {% endif %}
         </div>
+        {% if s.get('pending_completion') %}
+        <div class="stage-pending-confirm">
+            <span class="stage-pending-badge">Ожидает подтверждения директора по стройке</span>
+            <a href="{{ url_for('director_stage_confirmations') }}" class="btn btn-small btn-primary">Подтвердить этап</a>
+        </div>
+        {% endif %}
         <div class="stage-chat-section stage-chat-inline">
             <p class="stage-chat-title">Переписка по этапу «{{ s.name }}»:</p>
             {% if stage_chat.get(s.id) %}
@@ -140,7 +182,7 @@
             {% else %}
             <p class="stage-chat-empty">Пока нет сообщений по этому этапу</p>
             {% endif %}
-            <form method="post" action="{{ url_for('admin_project_chat', project_id=project.id) }}" class="stage-chat-form">
+            <form method="post" action="{{ url_for('director_project_chat' if session.get('role') == 'director_construction' else 'admin_project_chat', project_id=project.id) }}" class="stage-chat-form">
                 <input type="hidden" name="stage_id" value="{{ s.id }}">
                 <input type="hidden" name="from_page" value="stages">
                 <div class="stage-chat-form-row">
@@ -152,10 +194,12 @@
         </div>
         {% endfor %}
     </div>
+    {% if can_edit_stages %}
     <div style="margin-top: 1rem;">
         <button type="submit" form="stages-form" class="btn btn-primary">Сохранить все изменения</button>
         <a href="{{ url_for('admin_projects') }}" class="btn btn-outline">Отмена</a>
     </div>
+    {% endif %}
     {% else %}
     <p>Этапов пока нет. Добавьте первый этап выше.</p>
     {% endif %}

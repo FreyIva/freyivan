@@ -66,6 +66,9 @@
     --header-fg: rgba(255, 255, 255, 0.92);
     --header-fg-soft: rgba(255, 255, 255, 0.78);
     --header-border: rgba(255,255,255,0.10);
+
+    /* Dark accent (header nav, badges, links) */
+    --color-dark: #0f172a;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -97,6 +100,9 @@
         --header-fg: rgba(248, 250, 252, 0.92);
         --header-fg-soft: rgba(226, 232, 240, 0.72);
         --header-border: rgba(148,163,184,0.16);
+
+        /* Dark accent (dark mode) */
+        --color-dark: #f8fafc;
     }
 }
 
@@ -120,12 +126,30 @@ body {
     overflow-x: hidden;
 }
 
+/* Skip-link: скрыт, виден при фокусе (Tab) */
+.skip-link {
+    position: fixed;
+    left: -9999px;
+    top: 0.75rem;
+    z-index: 9999;
+    padding: 0.5rem 1rem;
+    background: var(--color-accent);
+    color: var(--color-accent-contrast);
+    font-weight: 600;
+    border-radius: var(--radius);
+    text-decoration: none;
+}
+.skip-link:focus {
+    left: 1rem;
+}
+
 /* Шапка */
 .header {
     position: relative;
     background: var(--header-bg);
     color: var(--header-fg);
     padding: 0.75rem 1rem;
+    padding-top: max(0.75rem, env(safe-area-inset-top));
     box-shadow: var(--shadow-1);
     border-bottom: 1px solid var(--header-border);
     backdrop-filter: saturate(140%) blur(14px);
@@ -242,6 +266,10 @@ body {
 .nav-link:hover, .nav-link.active {
     background: rgba(255, 255, 255, 0.14);
     color: var(--header-fg);
+}
+.nav-link:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.8);
+    outline-offset: 2px;
 }
 
 /* Выпадающие пункты меню в шапке (для админа — много разделов) */
@@ -492,6 +520,11 @@ body {
 .breadcrumbs a:hover {
     text-decoration: underline;
 }
+.breadcrumbs a:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
 
 /* Основной контент */
 .main {
@@ -584,6 +617,20 @@ body {
 
 .page-header .subtitle {
     flex-basis: 100%;
+}
+
+.page-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.page-header-actions-sep {
+    width: 1px;
+    height: 1.5em;
+    background: var(--color-border);
+    margin: 0 0.25rem;
 }
 
 .subtitle {
@@ -1299,6 +1346,12 @@ textarea.form-control {
     transform: translateY(-2px);
     box-shadow: var(--shadow-2);
 }
+a.project-card:focus-visible,
+a.project-card-link:focus-visible,
+a.project-card-mini:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
 
 .project-card-header {
     display: flex;
@@ -1918,6 +1971,14 @@ textarea.form-control {
 
 .users-table-wrap {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Таблица «Закрыть день» — горизонтальный скролл на мобильных */
+@media (max-width: 600px) {
+    .work-rows-wrap #work-rows {
+        min-width: 520px;
+    }
 }
 
 .users-table {
@@ -2268,6 +2329,8 @@ textarea.form-control {
 .badge-client { background: var(--color-success); color: #fff; }
 .badge-warning { background: var(--color-warning); color: #fff; }
 .badge-completed { background: var(--color-success); color: #fff; }
+.badge-approved { background: var(--color-success); color: #fff; }
+.badge-rejected { background: var(--color-danger, #c53030); color: #fff; }
 
 /* Двухколоночный layout */
 .two-column-layout {
@@ -2321,6 +2384,10 @@ textarea.form-control {
 .modal-close:hover {
     color: var(--color-dark);
 }
+.modal-close:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
 
 .modal-content h3 {
     margin: 0 0 1.5rem 0;
@@ -2363,7 +2430,16 @@ textarea.form-control {
 .empty-state {
     text-align: center;
     color: var(--color-text-muted);
-    padding: 3rem 1rem;
+    padding: 3rem 1.5rem;
+    font-size: 1rem;
+    line-height: 1.5;
+}
+.empty-state a {
+    color: var(--color-accent);
+    text-decoration: none;
+}
+.empty-state a:hover {
+    text-decoration: underline;
 }
 
 /* Кнопка "Назад" */
@@ -2757,6 +2833,41 @@ body.theme-style-5 .btn-primary {
     margin: 0.25rem 0 0 0;
 }
 
+/* Фото от прораба в подтверждении этапов (директор по строительству) */
+.stage-confirm-photos .photo-carousel {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.stage-confirm-photos .photo-carousel-item {
+    display: block;
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius);
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.stage-confirm-photos .photo-carousel-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.stage-comment {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.9rem;
+}
+
+.edit-request-rejection-comment {
+    margin: 0.75rem 0;
+    padding: 0.75rem 1rem;
+    background: #fef2f2;
+    border-radius: var(--radius);
+    border-left: 4px solid var(--color-danger, #c53030);
+}
+
 .edit-request-comment-block {
     margin: 1rem 0;
 }
@@ -2849,6 +2960,27 @@ body.theme-style-5 .btn-primary {
 }
 
 /* Переписка по этапу (под карточкой этапа) */
+.stage-pending-confirm {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: #fff8e6;
+    border-radius: var(--radius);
+    border-left: 4px solid var(--color-primary, #e6a800);
+}
+
+.stage-pending-badge {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--color-text);
+}
+
+.stage-name-readonly {
+    font-weight: 500;
+}
+
 .stage-chat-section {
     margin-top: 1rem;
     padding: 1rem;
@@ -3704,26 +3836,30 @@ body.theme-style-5 .btn-primary {
         text-align: center;
     }
 
+    /* Переключатель тем — скрыть на мобильных (экономия места) */
+    .theme-toggle {
+        display: none !important;
+    }
 
-.refresh-progress-wrap {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: rgba(0,0,0,0.04);
-    overflow: hidden;
-}
+    .refresh-progress-wrap {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: rgba(0,0,0,0.04);
+        overflow: hidden;
+    }
 
-.refresh-progress-bar {
-    height: 100%;
-    width: 100%;
-    background: rgba(22, 75, 45, 0.4);
-    transition: width 0.05s linear;
-    position: absolute;
-    right: 0;
-    top: 0;
-}
+    .refresh-progress-bar {
+        height: 100%;
+        width: 100%;
+        background: rgba(22, 75, 45, 0.4);
+        transition: width 0.05s linear;
+        position: absolute;
+        right: 0;
+        top: 0;
+    }
 }
 
 @media (max-width: 480px) {
@@ -3889,6 +4025,16 @@ body.theme-style-5 .btn-primary {
     }
 }
 
+/* Критичные кнопки — увеличенная touch-зона на мобильных */
+@media (max-width: 768px) {
+    .stage-confirm,
+    .close-substage-btn,
+    .btn-primary[type="submit"] {
+        min-height: var(--touch-min);
+        padding: 0.5rem 1rem;
+    }
+}
+
 /* Этапы — мобильная версия */
 @media (max-width: 768px) {
     .stage-item {
@@ -4036,6 +4182,7 @@ body.theme-style-5 .btn-primary {
 /* Футер */
 .footer {
     padding: 0.75rem 1rem;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
     font-size: 0.85rem;
     color: var(--color-text-muted);
     text-align: center;
@@ -4045,6 +4192,7 @@ body.theme-style-5 .btn-primary {
     .footer {
         font-size: 0.8rem;
         padding: 0.5rem 0.75rem;
+        padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
     }
 }
 
@@ -4191,12 +4339,21 @@ body {
     margin: 0.5rem 0;
     font-size: 0.9rem;
 }
-.roles-duties {
+.roles-subsection {
+    margin: 1rem 0 0.5rem 0;
+    font-size: 0.95rem;
+    color: var(--color-text-muted);
+}
+.roles-duties, .roles-rights {
     margin: 0.5rem 0 0 1.25rem;
     padding: 0;
 }
-.roles-duties li {
+.roles-duties li, .roles-rights li {
     margin-bottom: 0.25rem;
+}
+.roles-rights {
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
 }
 
 /* Сценарии и цепочки действий (страница связей ролей) */
@@ -4275,4 +4432,19 @@ body {
     margin-top: 0.25rem;
     font-size: 0.8rem;
     color: var(--color-text-soft);
+}
+
+/* Skeleton loaders (для будущего использования) */
+.skeleton {
+    background: linear-gradient(90deg, var(--color-border) 25%, var(--color-surface-2) 50%, var(--color-border) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.2s ease-in-out infinite;
+    border-radius: var(--radius-sm);
+}
+.skeleton-text { height: 1em; }
+.skeleton-title { height: 1.5em; width: 60%; }
+.skeleton-card { height: 120px; }
+@keyframes skeleton-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
 }

@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}Стройка на участке — Шервуд Хоум СтройКонтроль{% endblock %}
+
+{% block nav %}
+{% if current_role == 'director_construction' %}
+<a href="{{ url_for('director_construction_dashboard') }}" class="nav-link">Дашборд</a>
+<a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+<a href="{{ url_for('director_stage_confirmations') }}" class="nav-link">Подтверждение этапов</a>
+<a href="{{ url_for('director_construction_calendar') }}" class="nav-link">Производственный календарь</a>
+{% include '_nav_spravochniki_dropdown.html' %}
+{% else %}
+<a href="{{ url_for('admin_dashboard') }}" class="nav-link">Дашборд</a>
+{% include '_nav_spravochniki_dropdown.html' %}
+<details class="nav-dropdown">
+    <summary class="nav-link">Отчёты</summary>
+    <div class="nav-dropdown-menu">
+        <a href="{{ url_for('worker_reports') }}" class="nav-link">Отчёты работников</a>
+        <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
+    </div>
+</details>
+{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="breadcrumbs">
+    {% if current_role == 'director_construction' %}
+    <a href="{{ url_for('director_construction_dashboard') }}">Директор по строительству</a> &rarr;
+    {% else %}
+    <a href="{{ url_for('admin_dashboard') }}">Админ</a> &rarr;
+    {% endif %}
+    <span>Стройка на участке</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Справочник этапов стройки на участке</h1>
+    <p class="subtitle">Этапность работ по каждому направлению. У каждого этапа — подэтапы и операции с чек-листами для проверки.</p>
+</div>
+
+<div class="form-row" style="margin-bottom: 1rem;">
+    <label>Направление:</label>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <a href="{{ url_for('admin_construction_stages', type='frame') }}" class="btn btn-outline {% if filter_type == 'frame' %}active{% endif %}">Каркас</a>
+        <a href="{{ url_for('admin_construction_stages', type='gasblock') }}" class="btn btn-outline {% if filter_type == 'gasblock' %}active{% endif %}">Газоблок</a>
+        <a href="{{ url_for('admin_construction_stages', type='penopolistirol') }}" class="btn btn-outline {% if filter_type == 'penopolistirol' %}active{% endif %}">Пенополистирол</a>
+    </div>
+</div>
+
+<section class="card">
+    <h2>{{ building_types.get(filter_type, filter_type) }}</h2>
+    {% for s in stages %}
+    <details class="stage-details">
+        <summary class="stage-summary">
+            <span class="stage-toggle">▼</span>
+            {{ s.order_num }}. {{ s.name }}
+            {% if s.substages %}<span class="stage-count">({{ s.substages|length }} подэт.)</span>{% endif %}
+        </summary>
+        <div class="stage-template-card">
+        {% if s.substages %}
+        <div class="substages-accordion">
+            {% for sub in s.substages %}
+            <details class="substage-details">
+                <summary class="substage-summary">
+                    <span class="substage-toggle">▼</span>
+                    {{ sub.order_num }}. {{ sub.name }}
+                    {% if sub.operations %}<span class="substage-count">({{ sub.operations|length }} опер.)</span>{% endif %}
+                </summary>
+                <div class="substage-content">
+                    {% if sub.operations %}
+                    {% for op in sub.operations %}
+                    <div class="operation-block">
+                        <strong>Операция {{ op.order_num }}:</strong> {{ op.name }}
+                        {% if op.check_what_title %}
+                        <p><strong>Что проверяем:</strong> {{ op.check_what_title }}</p>
+                        {% endif %}
+                        {% if op.check_what_items %}
+                        <pre>{{ op.check_what_items }}</pre>
+                        {% endif %}
+                        {% if op.control_items %}
+                        <p><strong>Контроль:</strong></p>
+                        <pre>{{ op.control_items }}</pre>
+                        {% endif %}
+                        {% if op.typical_errors %}
+                        <p><strong>Типичные ошибки:</strong></p>
+                        <pre>{{ op.typical_errors }}</pre>
+                        {% endif %}
+                        {% if op.quick_checklist %}
+                        <p><strong>Быстрый чек-лист:</strong></p>
+                        <pre>{{ op.quick_checklist }}</pre>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <p class="card-meta">Операции можно добавить позже.</p>
+                    {% endif %}
+                </div>
+            </details>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="card-meta">Подэтапы можно добавить позже.</p>
+        {% endif %}
+        </div>
+    </details>
+    {% else %}
+    <p class="empty-state">Нет этапов для выбранного направления.</p>
+    {% endfor %}
+</section>
+
+<style>
+.stage-details { margin-bottom: 0.5rem; border: 1px solid var(--border-color, #ddd); border-radius: 8px; overflow: hidden; }
+.stage-details[open] summary .stage-toggle { transform: rotate(180deg); }
+.stage-summary {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    user-select: none;
+    background: var(--bg-secondary, #f0f2f5);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    font-size: 1.05rem;
+}
+.stage-summary::-webkit-details-marker { display: none; }
+.stage-summary:hover { background: var(--bg-hover, #e6e8ec); }
+.stage-toggle { font-size: 0.7em; transition: transform 0.2s; display: inline-block; }
+.stage-count { font-size: 0.85em; font-weight: normal; color: var(--text-muted, #666); }
+.stage-template-card { padding: 1rem; border-top: 1px solid var(--border-color, #ddd); }
+.substages-accordion { margin-top: 0.5rem; }
+.substage-details { margin-bottom: 0.5rem; border: 1px solid var(--border-color, #ddd); border-radius: 6px; overflow: hidden; }
+.substage-details[open] summary .substage-toggle { transform: rotate(180deg); }
+.substage-summary {
+    padding: 0.6rem 1rem;
+    cursor: pointer;
+    user-select: none;
+    background: var(--bg-secondary, #f8f9fa);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.substage-summary::-webkit-details-marker { display: none; }
+.substage-summary:hover { background: var(--bg-hover, #eef0f2); }
+.substage-toggle { font-size: 0.7em; transition: transform 0.2s; display: inline-block; }
+.substage-count { font-size: 0.9em; color: var(--text-muted, #666); }
+.substage-content { padding: 1rem; border-top: 1px solid var(--border-color, #ddd); }
+.operation-block {
+    padding: 0.75rem;
+    background: var(--bg-secondary, #f8f9fa);
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+}
+.operation-block:last-child { margin-bottom: 0; }
+.operation-block pre { margin: 0.25rem 0; white-space: pre-wrap; font-size: 0.9em; }
+.operation-block p { margin: 0.5rem 0 0 0; }
+</style>
+
+<p class="card-meta">При создании проекта этапы создаются из этого справочника. Прораб при закрытии этапа прикрепляет не менее 3 фотографий, после чего этап переходит на проверку директору по строительству.</p>
+{% endblock %}

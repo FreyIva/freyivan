@@ -16,6 +16,7 @@
 <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
 <a href="{{ url_for('director_stage_confirmations') }}" class="nav-link">Подтверждение этапов</a>
 <a href="{{ url_for('director_construction_calendar') }}" class="nav-link">Производственный календарь</a>
+{% include '_nav_spravochniki_dropdown.html' %}
 {% endif %}
 {% endblock %}
 
@@ -77,5 +78,10 @@
     </form>
 </div>
 
-<a href="{{ url_for('director_stage_confirmations') }}" class="btn btn-outline back-link">← К подтверждению этапов</a>
+<div class="back-links-row">
+    {% if session.get('role') in ('admin', 'manager_op', 'director_construction') and project.type in ('frame', 'gasblock', 'penopolistirol') %}
+    <a href="{{ url_for('admin_project_stages', project_id=project.id) }}" class="btn btn-outline">Этапы проекта</a>
+    {% endif %}
+    <a href="{{ url_for('director_stage_confirmations') }}" class="btn btn-outline back-link">← К подтверждению этапов</a>
+</div>
 {% endblock %}

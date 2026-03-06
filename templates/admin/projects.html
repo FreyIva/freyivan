@@ -45,7 +45,7 @@
 
 <section class="card">
     <h2>Создать новый проект</h2>
-    <form method="post" action="{{ url_for('admin_projects') }}" enctype="multipart/form-data" class="form form-inline">
+        <form method="post" action="{{ url_for('admin_projects') }}" enctype="multipart/form-data" class="form form-inline" data-unsaved-warn>
         <input type="hidden" name="action" value="create">
         <div class="form-row">
             <div class="form-group">
@@ -160,10 +160,10 @@
     <h2>Список проектов</h2>
     {% if projects %}
     <div class="users-table-wrap">
-        <table class="admin-projects-table" id="projects-table">
+        <table class="admin-projects-table" data-sortable id="projects-table">
             <thead>
-                <tr><th>Превью</th><th>Объект</th><th>Тип</th><th>Адрес</th><th>Заказчик</th><th>Мастер / Прораб</th><th>Ответственный ОП</th><th>Действия</th></tr>
-                <tr class="table-filter-row">
+                <tr><th scope="col">Превью</th><th scope="col" data-sortable="1">Объект</th><th scope="col" data-sortable="2">Тип</th><th scope="col" data-sortable="3">Адрес</th><th scope="col" data-sortable="4">Заказчик</th><th scope="col" data-sortable="5">Мастер / Прораб</th><th scope="col" data-sortable="6">Ответственный ОП</th><th scope="col">Действия</th></tr>
+                <tr class="table-filter-row" aria-hidden="true">
                     <th></th>
                     <th><input type="text" class="form-control form-control-sm table-filter" data-col="name" placeholder="Поиск..." title="Фильтр по названию"></th>
                     <th><select class="form-control form-control-sm table-filter" data-col="type" title="Фильтр по типу">

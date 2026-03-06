@@ -1,8 +1,14 @@
-<details class="nav-dropdown" {% if request.endpoint == 'admin_work_items' %}open{% endif %}>
-    <summary class="nav-link {% if request.endpoint == 'admin_work_items' %}active{% endif %}">Справочники</summary>
+<details class="nav-dropdown" {% if request.endpoint in ('admin_work_items', 'admin_construction_stages') %}open{% endif %}>
+    <summary class="nav-link {% if request.endpoint in ('admin_work_items', 'admin_construction_stages') %}active{% endif %}">Справочники</summary>
     <div class="nav-dropdown-menu">
+        {% if current_role == 'admin' %}
         <a href="{{ url_for('admin_work_items') }}" class="nav-link {% if request.endpoint == 'admin_work_items' and not request.args.get('type') %}active{% endif %}">Все виды</a>
-        <a href="{{ url_for('admin_work_items', type='production') }}" class="nav-link {% if request.endpoint == 'admin_work_items' and request.args.get('type') == 'production' %}active{% endif %}">Работы производства</a>
-        <a href="{{ url_for('admin_work_items', type='construction') }}" class="nav-link {% if request.endpoint == 'admin_work_items' and request.args.get('type') == 'construction' %}active{% endif %}">Работы на участке</a>
+        {% endif %}
+        {% if current_role in ('admin', 'director_production') %}
+        <a href="{{ url_for('admin_work_items', type='production') }}" class="nav-link {% if request.endpoint == 'admin_work_items' and request.args.get('type') == 'production' %}active{% endif %}">Производство</a>
+        {% endif %}
+        {% if current_role in ('admin', 'director_construction') %}
+        <a href="{{ url_for('admin_construction_stages') }}" class="nav-link {% if request.endpoint == 'admin_construction_stages' %}active{% endif %}">Стройка на участке</a>
+        {% endif %}
     </div>
 </details>

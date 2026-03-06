@@ -7,6 +7,7 @@
 <a href="{{ url_for('foreman_reports') }}" class="nav-link">Отчёты прорабов</a>
 <a href="{{ url_for('director_stage_confirmations') }}" class="nav-link">Подтверждение этапов</a>
 <a href="{{ url_for('director_construction_calendar') }}" class="nav-link">Производственный календарь</a>
+{% include '_nav_spravochniki_dropdown.html' %}
 {% endblock %}
 
 {% block breadcrumbs %}
@@ -48,7 +49,7 @@
                 <button type="submit" class="btn btn-primary">Назначить</button>
             </div>
         </div>
-        <p class="card-meta">Прораб должен быть привязан к вам как к директору по строительству.</p>
+        <p class="card-meta">Назначьте прораба на объект каркас/газоблок/пенополистирол.</p>
     </form>
 </section>
 
